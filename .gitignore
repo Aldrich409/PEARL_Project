@@ -1,0 +1,14 @@
+# Python / FastAPI / Streamlit
+venv/
+__pycache__/
+pearl_data.db
+
+# PlatformIO / C++
+.pio/
+.vscode/
+
+# Flutter / Dart
+.dart_tool/
+build/
+.pub-cache/
+.packages
