@@ -2,10 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'screens/login_screen.dart';
 
-// We will create these screens next!
-// import 'screens/login_screen.dart';
-// import 'screens/dashboard_screen.dart';
-
 void main() {
   runApp(const PearlApp());
 }
@@ -16,19 +12,39 @@ class PearlApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'P.E.A.R.L. System',
+      title: 'PEARL System',
       debugShowCheckedModeBanner: false,
+      themeMode: ThemeMode.system, // Automatically switches based on the device's system theme
       
-      // 🌊 LIGHT MODE: Ocean Blue Theme
+      // ==========================================
+      // 🌊 LIGHT MODE: Soft Pearl Aesthetic
+      // ==========================================
       theme: ThemeData(
         brightness: Brightness.light,
-        scaffoldBackgroundColor: const Color(0xFFE0F2FE), // Soft ocean water
+        scaffoldBackgroundColor: const Color(0xFFE8F6F8), 
         primaryColor: const Color(0xFF0284C7),
-        cardColor: Colors.white,
+        
+        cardTheme: CardThemeData(
+          color: Colors.white,
+          elevation: 2,
+          shadowColor: Colors.black.withValues(alpha: 0.1),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20), 
+          ),
+        ),
+        
+        listTileTheme: ListTileThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          selectedTileColor: const Color(0xFF0284C7).withValues(alpha: 0.1),
+        ),
+
         textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme).apply(
           bodyColor: const Color(0xFF334155),
           displayColor: const Color(0xFF0369A1),
         ),
+        
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.transparent,
           elevation: 0,
@@ -37,29 +53,45 @@ class PearlApp extends StatelessWidget {
         ),
       ),
 
-      // 🌌 DARK MODE: Deep Space Theme
+      // ==========================================
+      // 🌌 DARK MODE: Deep Space Aesthetic
+      // ==========================================
       darkTheme: ThemeData(
         brightness: Brightness.dark,
-        scaffoldBackgroundColor: const Color(0xFF1A1A2E), // Deep dark purple-blue
-        primaryColor: const Color(0xFF8B5CF6), // Neon Purple
-        cardColor: const Color(0xFF16213E), // Dark container
-        textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme).apply(
-          bodyColor: const Color(0xFFE2E8F0),
-          displayColor: Colors.white,
+        scaffoldBackgroundColor: const Color(0xFF0F172A), 
+        primaryColor: const Color(0xFF38BDF8),
+        
+        cardTheme: CardThemeData(
+          color: const Color(0xFF1E293B),
+          elevation: 4,
+          shadowColor: Colors.black.withOpacity(0.4),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(20),
+          ),
         ),
+        
+        listTileTheme: ListTileThemeData(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          selectedTileColor: const Color(0xFF38BDF8).withOpacity(0.15),
+        ),
+
+        textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme).apply(
+          bodyColor: const Color(0xFFCBD5E1),
+          displayColor: const Color(0xFFE0F2FE),
+        ),
+        
         appBarTheme: const AppBarTheme(
           backgroundColor: Colors.transparent,
           elevation: 0,
-          iconTheme: IconThemeData(color: Colors.white),
-          titleTextStyle: TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold),
+          iconTheme: IconThemeData(color: Color(0xFFE0F2FE)),
+          titleTextStyle: TextStyle(color: Color(0xFFE0F2FE), fontSize: 20, fontWeight: FontWeight.bold),
         ),
       ),
       
-      // Automatically switch based on the user's phone settings
-      themeMode: ThemeMode.system, 
-      
-      // Start at a temporary placeholder until we build the Login Screen
-    home: const LoginScreen(),
+      // Launch the app on the Login Screen
+      home: const LoginScreen(),
     );
   }
 }

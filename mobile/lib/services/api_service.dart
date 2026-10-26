@@ -3,7 +3,6 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Use localhost for Chrome testing!
   static const String baseUrl = 'http://localhost:8000';
 
   // --- AUTHENTICATION ---
@@ -42,6 +41,53 @@ class ApiService {
       if (res.statusCode == 200) return jsonDecode(res.body);
     } catch (e) {}
     return [];
+  }
+
+  static Future<bool> updateDeviceSettings(Map<String, dynamic> deviceData) async {
+    final url = Uri.parse('$baseUrl/api/devices/update');
+    try {
+      final res = await http.put(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(deviceData),
+      );
+      return res.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  // --- FISH SPECIES LIBRARY & AI SUGGESTIONS ---
+  static Future<List<dynamic>> getFishProfiles() async {
+    final url = Uri.parse('$baseUrl/api/fish-profiles');
+    try {
+      final res = await http.get(url);
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (e) {}
+    return [];
+  }
+
+  static Future<Map<String, dynamic>?> getFishSuggestion(String fishName) async {
+    final url = Uri.parse('$baseUrl/api/fish-profiles/suggest?fish_name=${Uri.encodeComponent(fishName)}');
+    try {
+      final res = await http.get(url);
+      if (res.statusCode == 200) return jsonDecode(res.body);
+    } catch (e) {}
+    return null;
+  }
+
+  static Future<bool> saveFishProfile(Map<String, dynamic> profileData) async {
+    final url = Uri.parse('$baseUrl/api/fish-profiles');
+    try {
+      final res = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(profileData),
+      );
+      return res.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
   }
 
   static Future<Map<String, dynamic>?> getLatestTelemetry(String deviceSn) async {

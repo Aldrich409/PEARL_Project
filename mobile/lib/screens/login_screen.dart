@@ -16,7 +16,7 @@ class _LoginScreenState extends State<LoginScreen> {
   bool _isLoading = false;
   bool _obscurePassword = true;
 
- Future<void> _submitLogin() async {
+  Future<void> _submitLogin() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
@@ -43,6 +43,7 @@ class _LoginScreenState extends State<LoginScreen> {
       );
     }
   }
+
   @override
   void dispose() {
     _usernameController.dispose();
@@ -65,20 +66,26 @@ class _LoginScreenState extends State<LoginScreen> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  // --- Centered Logo Placeholder ---
+                  // --- 🚀 YOUR NEW LOGO HERE ---
                   Container(
-                    width: 100,
-                    height: 100,
+                    width: 140, 
+                    height: 140,
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: primaryBlue.withOpacity(0.12),
-                      border: Border.all(color: primaryBlue.withOpacity(0.4), width: 2),
-                    ),
-                    child: const Center(
-                      child: Text('🐟', style: TextStyle(fontSize: 48)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: primaryBlue.withOpacity(0.3),
+                          blurRadius: 15,
+                          offset: const Offset(0, 5),
+                        ),
+                      ],
+                      image: const DecorationImage(
+                        image: AssetImage('images/pearl_logo.png'), 
+                        fit: BoxFit.cover,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 24), 
 
                   // --- Titles ---
                   const Text(

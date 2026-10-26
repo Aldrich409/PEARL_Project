@@ -5,6 +5,7 @@ import 'live_telemetry_screen.dart';
 import 'forecast_screen.dart';
 import 'network_overview_screen.dart';
 import 'records_screen.dart';
+import 'settings_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -59,7 +60,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       case 'Telemetry Records':
         return RecordsScreen(userData: widget.userData, activeDeviceSn: _selectedDeviceSn);
       case 'System Settings':
-        return const Center(child: Text('⚙️ System Settings Coming Soon!'));
+        return SettingsScreen(userData: widget.userData, activeDeviceSn: _selectedDeviceSn);
       default:
         return const Center(child: Text('Page Not Found'));
     }
@@ -90,7 +91,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   return PopupMenuItem<String>(
                     value: dev['device_sn'],
                     child: Text(
-                      "Farmer ${dev['owner_id']} (${dev['pond_name']})",
+                      "Farmer ${dev['owner_id']} (${dev['pond_name']} - ${dev['fish_type'] ?? 'Tilapia'})",
                       style: TextStyle(
                         fontWeight: _selectedDeviceSn == dev['device_sn'] ? FontWeight.bold : FontWeight.normal,
                         color: _selectedDeviceSn == dev['device_sn'] ? primaryColor : null,
@@ -128,14 +129,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
               title: const Text('Live Telemetry'),
               selected: _currentPage == 'Live Telemetry',
               selectedColor: primaryColor,
-              onTap: () { setState(() => _currentPage = 'Live Telemetry'); Navigator.pop(context); },
+              onTap: () {
+                setState(() => _currentPage = 'Live Telemetry');
+                Navigator.pop(context);
+              },
             ),
             ListTile(
               leading: const Icon(Icons.online_prediction),
               title: const Text('Breeding Forecast'),
               selected: _currentPage == 'Breeding Forecast',
               selectedColor: primaryColor,
-              onTap: () { setState(() => _currentPage = 'Breeding Forecast'); Navigator.pop(context); },
+              onTap: () {
+                setState(() => _currentPage = 'Breeding Forecast');
+                Navigator.pop(context);
+              },
             ),
             if (role == 'admin')
               ListTile(
@@ -143,14 +150,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 title: const Text('Network Overview'),
                 selected: _currentPage == 'Network Overview',
                 selectedColor: primaryColor,
-                onTap: () { setState(() => _currentPage = 'Network Overview'); Navigator.pop(context); },
+                onTap: () {
+                  setState(() => _currentPage = 'Network Overview');
+                  Navigator.pop(context);
+                },
               ),
             ListTile(
               leading: const Icon(Icons.folder_open),
               title: const Text('Telemetry Records'),
               selected: _currentPage == 'Telemetry Records',
               selectedColor: primaryColor,
-              onTap: () { setState(() => _currentPage = 'Telemetry Records'); Navigator.pop(context); },
+              onTap: () {
+                setState(() => _currentPage = 'Telemetry Records');
+                Navigator.pop(context);
+              },
             ),
             const Divider(),
             ListTile(
@@ -158,7 +171,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
               title: const Text('System Settings'),
               selected: _currentPage == 'System Settings',
               selectedColor: primaryColor,
-              onTap: () { setState(() => _currentPage = 'System Settings'); Navigator.pop(context); },
+              onTap: () {
+                setState(() => _currentPage = 'System Settings');
+                Navigator.pop(context);
+              },
             ),
             ListTile(
               leading: const Icon(Icons.logout, color: Colors.redAccent),

@@ -39,6 +39,16 @@ st.markdown("""
         fill: #FFFFFF !important; 
     }
 
+    /* 👇 MAIN CONTENT TOP PADDING REMOVAL */
+    .block-container {
+        padding-top: 1.5rem !important;
+        padding-bottom: 1rem !important;
+    }
+    header[data-testid="stHeader"] {
+        background: transparent !important;
+        height: 0px !important;
+    }
+
     /* METRIC CARDS - Transparent overlays adapt to Light/Dark automatically */
     div[data-testid="stMetric"] {
         background-color: rgba(14, 165, 233, 0.05) !important;
@@ -78,9 +88,22 @@ st.markdown("""
     /* HIDE DEFAULT STREAMLIT TOOLBAR */
     .stAppDeployButton, .stDeployButton { display: none !important; }
     
-    /* COMPACT SIDEBAR */
-    [data-testid="stSidebar"] { padding-top: 0rem; border-right: 1px solid rgba(14, 165, 233, 0.2) !important; }
-    [data-testid="stSidebar"] > div:first-child { padding-top: 2rem !important; padding-bottom: 1rem !important; }
+    /* 👇 AGGRESSIVE SIDEBAR PADDING REMOVAL */
+    [data-testid="stSidebar"] {
+        border-right: 1px solid rgba(14, 165, 233, 0.2) !important;
+    }
+    
+    /* Targets the inner container holding the sidebar content */
+    [data-testid="stSidebarUserContent"] {
+        padding-top: 0px !important; 
+    }
+
+    /* Targets the invisible sidebar header that Streamlit adds */
+    [data-testid="stSidebarHeader"] {
+        padding: 0px !important;
+        height: 0px !important;
+        min-height: 0px !important;
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -140,10 +163,31 @@ if not st.session_state.logged_in:
             if st.form_submit_button("Login to Dashboard", use_container_width=True):
                 handle_login(user_input, pass_input)
 
-# --- MAIN SECURE DASHBOARD ---
 else:
-    st.sidebar.title("PEARL System")
-    st.sidebar.markdown(f"**User:** {st.session_state.username} ({st.session_state.role.capitalize()})")
+    # 1. Add the Logo (Centered and larger using columns)
+    # The [1, 2, 1] ratio makes the middle column wider, sizing the logo nicely
+    logo_col1, logo_col2, logo_col3 = st.sidebar.columns([1, 2, 1])
+    with logo_col2:
+        if os.path.exists("pearl_logo(1).png"):
+            st.image("pearl_logo(1).png", use_container_width=True)
+        elif os.path.exists("pearl_logo.png"):
+            st.image("pearl_logo.png", use_container_width=True)
+        else:
+            st.markdown("<h1 style='text-align: center; margin: 0;'>🐟</h1>", unsafe_allow_html=True)
+
+    # 2. Add the Title and User info (Centered to match the logo)
+    st.sidebar.markdown(
+        f"""
+        <div style='text-align: center;'>
+            <h3 style='margin-bottom: -15px; margin-top: 0px; padding-top: 0px;'>PEARL System</h3>
+            <p style='font-size: 14px; color: #0284C7; margin-top: 0px; padding-top: 0px;'>
+                <b>User:</b> {st.session_state.username} ({st.session_state.role.capitalize()})
+            </p>
+        </div>
+        """, 
+        unsafe_allow_html=True
+    )
+    
     st.sidebar.markdown("---")
 
     st.sidebar.button("📊 Live Telemetry", on_click=set_page, args=("Live Telemetry",), use_container_width=True)
