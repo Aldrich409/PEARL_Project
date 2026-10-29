@@ -1,111 +1,63 @@
-# ==============================================================================
-# FILE 1: dashboard.py (Main Streamlit Entry Point)
-# ==============================================================================
 import sys
 import os
+import base64
+import datetime
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 import streamlit as st
-import data_fetcher
-import node_selector
-from views import view_telemetry, view_forecast, view_records, view_settings, view_admin_overview, view_account_management
+from PIL import Image
+
+# Using the API modules and separated components/views
+from api import auth_api, device_api 
+from api.telemetry_api import fetch_latest_data
+from components import sidebar
+from views import (
+    view_telemetry, 
+    view_forecast, 
+    view_records, 
+    view_settings, 
+    view_admin_overview, 
+    view_account_management,
+    view_system_health
+)
 
 # --- PAGE CONFIGURATION ---
 st.set_page_config(
     page_title="PEARL Dashboard", 
-    page_icon="🐟", 
+    page_icon="🐟",  
     layout="wide",
     initial_sidebar_state="expanded"
 )
 
-# --- GLOBAL OCEAN THEME CSS (LIGHT/DARK COMPATIBLE) ---
-st.markdown("""
-    <style>
-    /* 🛑 HIDE THE SIDEBAR CLOSE BUTTON TO PREVENT HIDING */
-    [data-testid="stSidebarCollapseButton"] {
-        display: none !important;
-    }
+# --- LOAD GLOBAL CSS THEME ---
+def load_css():
+    css_path = os.path.join(os.path.dirname(__file__), "assets", "theme.css")
+    if os.path.exists(css_path):
+        with open(css_path) as f:
+            st.markdown(f'<style>{f.read()}</style>', unsafe_allow_html=True)
+    else:
+        # Fallback CSS if theme.css is missing
+        st.markdown("""
+        <style>
+        .stApp { background-color: var(--background-color); }
+        div[data-testid="stMetric"] {
+            background-color: var(--secondary-background-color);
+            border: 1px solid var(--border-color);
+            padding: 16px 20px;
+            border-radius: 12px;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.05);
+        }
+        .tagalog-subtext {
+            color: #64748B;
+            font-size: 13px;
+            font-style: italic;
+            margin-top: -15px;
+            margin-bottom: 20px;
+        }
+        </style>
+        """, unsafe_allow_html=True)
 
-    /* SIDEBAR TOGGLE (Visible only if auto-collapsed on mobile screens) */
-    [data-testid="collapsedControl"] {
-        background-color: #0284C7 !important; 
-        border-radius: 50% !important;
-        margin-top: 10px !important;
-        margin-left: 10px !important;
-        box-shadow: 0px 4px 10px rgba(2, 132, 199, 0.4) !important;
-        z-index: 999999 !important;
-    }
-    [data-testid="collapsedControl"] svg {
-        fill: #FFFFFF !important; 
-    }
-
-    /* 👇 MAIN CONTENT TOP PADDING REMOVAL */
-    .block-container {
-        padding-top: 1.5rem !important;
-        padding-bottom: 1rem !important;
-    }
-    header[data-testid="stHeader"] {
-        background: transparent !important;
-        height: 0px !important;
-    }
-
-    /* METRIC CARDS - Transparent overlays adapt to Light/Dark automatically */
-    div[data-testid="stMetric"] {
-        background-color: rgba(14, 165, 233, 0.05) !important;
-        border: 1px solid rgba(14, 165, 233, 0.2) !important;
-        border-radius: 10px !important;
-        padding: 15px !important;
-        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05) !important;
-        transition: transform 0.2s ease, border-color 0.2s ease !important;
-    }
-    div[data-testid="stMetric"]:hover { 
-        transform: translateY(-2px); 
-        border-color: rgba(14, 165, 233, 0.6) !important;
-    }
-    div[data-testid="stMetricLabel"] > label {
-        font-weight: 700 !important;
-        font-size: 0.75rem !important; 
-        text-transform: uppercase;
-        letter-spacing: 0.5px;
-    }
-
-    /* CONTAINER BORDERS */
-    [data-testid="stVerticalBlockBorderWrapper"] {
-        border: 1px solid rgba(14, 165, 233, 0.2) !important;
-        border-radius: 12px !important;
-        background-color: rgba(14, 165, 233, 0.01) !important;
-    }
-
-    /* UNIVERSAL SUBTEXT STYLING */
-    .tagalog-subtext {
-        color: #0EA5E9 !important;
-        font-size: 13px !important; 
-        font-style: italic !important;
-        margin-top: -10px !important; 
-        margin-bottom: 15px !important;
-    }
-
-    /* HIDE DEFAULT STREAMLIT TOOLBAR */
-    .stAppDeployButton, .stDeployButton { display: none !important; }
-    
-    /* 👇 AGGRESSIVE SIDEBAR PADDING REMOVAL */
-    [data-testid="stSidebar"] {
-        border-right: 1px solid rgba(14, 165, 233, 0.2) !important;
-    }
-    
-    /* Targets the inner container holding the sidebar content */
-    [data-testid="stSidebarUserContent"] {
-        padding-top: 0px !important; 
-    }
-
-    /* Targets the invisible sidebar header that Streamlit adds */
-    [data-testid="stSidebarHeader"] {
-        padding: 0px !important;
-        height: 0px !important;
-        min-height: 0px !important;
-    }
-    </style>
-""", unsafe_allow_html=True)
+load_css()
 
 # --- SESSION STATE INITIALIZATION ---
 if "logged_in" not in st.session_state:
@@ -119,7 +71,7 @@ def set_page(page_name):
     st.session_state.current_page = page_name
 
 def handle_login(username, password):
-    user_data = data_fetcher.authenticate_user(username, password)
+    user_data = auth_api.authenticate_user(username, password) 
     if user_data:
         st.session_state.logged_in = True
         st.session_state.user_id = user_data["id"]
@@ -127,7 +79,7 @@ def handle_login(username, password):
         st.session_state.role = user_data["role"]
         st.session_state.current_page = "Live Telemetry"
 
-        devices = data_fetcher.fetch_devices(user_data["id"], user_data["role"])
+        devices = device_api.fetch_devices(user_data["id"], user_data["role"]) 
         if devices:
             st.session_state.active_device_sn = devices[0]["device_sn"]
         st.rerun()
@@ -138,86 +90,177 @@ def handle_logout():
     st.session_state.clear()
     st.rerun()
 
+# Helper function to load local images safely in Streamlit via Base64
+def get_base64_image(image_path):
+    try:
+        with open(image_path, "rb") as img_file:
+            return base64.b64encode(img_file.read()).decode()
+    except Exception:
+        return ""
+
+# ==========================================
+# UI ROUTING - LOGIN & DASHBOARD
+# ==========================================
+
 # --- LOGIN SCREEN ---
 if not st.session_state.logged_in:
-    st.markdown("<br><br>", unsafe_allow_html=True)
+    
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    bg_path = os.path.join(current_dir, "assets", "Pearl_BG.jpg")
+    logo_path = os.path.join(current_dir, "assets", "pearl_logo(1).png")
+    
+    bg_base64 = get_base64_image(bg_path)
+    logo_base64 = get_base64_image(logo_path)
+    
+    bg_url = f"data:image/jpeg;base64,{bg_base64}" if bg_base64 else ""
+    logo_url = f"data:image/png;base64,{logo_base64}" if logo_base64 else ""
 
-    col_spacer1, col_box, col_spacer2 = st.columns([1, 1.5, 1])
-    with col_box:
-        if os.path.exists("pearl_logo(1).png"):
-            # Nested columns to perfectly center the logo
-            logo_left, logo_center, logo_right = st.columns([1, 2, 1])
-            with logo_center:
-                st.image("pearl_logo(1).png", use_container_width=True)
-        else:
-            st.markdown("<h1 style='text-align: center; font-size: 3rem;'>🐟</h1>", unsafe_allow_html=True)
+    css_style = """
+        <style>
+        .stApp {
+            background-image: url('BG_URL_PLACEHOLDER');
+            background-size: cover;
+            background-position: center;
+            background-attachment: fixed;
+        }
+        header { visibility: hidden; }
+        
+        div[data-testid="column"]:nth-of-type(2) {
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(6px);
+            -webkit-backdrop-filter: blur(6px);
+            border: 2px solid #7C3AED !important;
+            border-radius: 12px;
+            padding: 30px 20px 40px 20px;
+            box-shadow: 0px 8px 30px rgba(0, 0, 0, 0.4);
+            text-align: center;
+            margin-top: 5vh;
+        }
 
-        st.markdown("<h1 style='text-align: center; margin-bottom: 0;'>P.E.A.R.L. System</h1>", unsafe_allow_html=True)
-        st.markdown("<p style='text-align: center; color: #0EA5E9;'>Predictive Environmental Analytics for Real-Time Aquaculture Logging</p>", unsafe_allow_html=True)
+        div[data-testid="stForm"] {
+            background: rgba(148, 163, 184, 0.85);
+            border: 2px solid #0EA5E9 !important;
+            border-radius: 12px;
+            padding: 20px;
+            box-shadow: inset 0 0 10px rgba(255,255,255,0.2);
+            margin-top: 15px;
+        }
 
+        div.stTextInput > div > div > input {
+            background-color: rgba(241, 245, 249, 0.95) !important;
+            border-radius: 20px !important;
+            border: 1px solid #CBD5E1 !important;
+            padding-left: 15px !important;
+            color: #0F172A !important;
+        }
+        
+        div[data-testid="stFormSubmitButton"] > button {
+            border-radius: 20px !important;
+            background-color: #F8FAFC !important;
+            color: #0F172A !important;
+            border: 1px solid #CBD5E1 !important;
+            font-weight: 700 !important;
+            margin-top: 10px;
+        }
+        div[data-testid="stFormSubmitButton"] > button:hover {
+            background-color: #0EA5E9 !important;
+            color: white !important;
+            border-color: #0EA5E9 !important;
+        }
+
+        .custom-form-header {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+            border-bottom: 2px solid #475569;
+            padding-bottom: 12px;
+            margin-bottom: 20px;
+        }
+        .sign-in-text {
+            color: #0F172A;
+            font-weight: 800;
+            font-size: 18px;
+        }
+        </style>
+    """
+    
+    css_style = css_style.replace("BG_URL_PLACEHOLDER", bg_url)
+    st.markdown(css_style, unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns([1.2, 1.6, 1.2])
+    
+    with col2:
+        header_html = f"""<div style="text-align: center; margin-bottom: 10px;">
+            <div style="text-align: center; margin-bottom: 5px;">
+                <img src="{logo_url}" width="300" style="filter: drop-shadow(0px 8px 10px rgba(0,0,0,0.5)); margin-bottom: 20px;">
+            </div>
+        </div>"""
+        st.markdown(header_html, unsafe_allow_html=True)
+        
         with st.form("login_form"):
-            st.subheader("Sign In")
-            user_input = st.text_input("Username")
-            pass_input = st.text_input("Password", type="password")
-
-            if st.form_submit_button("Login to Dashboard", use_container_width=True):
+            st.markdown("""
+                <div class="custom-form-header">
+                    <span class="sign-in-text" style="color: #0F172A; font-weight: 800; font-size: 30px;">Sign In</span>
+                </div>
+            """, unsafe_allow_html=True)
+            
+            user_input = st.text_input("Username", placeholder="👤 Username", label_visibility="collapsed")
+            pass_input = st.text_input("Password", type="password", placeholder="  🔒   Password", label_visibility="collapsed")
+            
+            if st.form_submit_button("Login", use_container_width=True):
                 handle_login(user_input, pass_input)
 
+# --- MAIN SECURE DASHBOARD ---
 else:
-    # 1. Add the Logo (Centered and larger using columns)
-    # The [1, 2, 1] ratio makes the middle column wider, sizing the logo nicely
-    logo_col1, logo_col2, logo_col3 = st.sidebar.columns([1, 2, 1])
-    with logo_col2:
-        if os.path.exists("pearl_logo(1).png"):
-            st.image("pearl_logo(1).png", use_container_width=True)
-        elif os.path.exists("pearl_logo.png"):
-            st.image("pearl_logo.png", use_container_width=True)
-        else:
-            st.markdown("<h1 style='text-align: center; margin: 0;'>🐟</h1>", unsafe_allow_html=True)
-
-    # 2. Add the Title and User info (Centered to match the logo)
-    st.sidebar.markdown(
-        f"""
-        <div style='text-align: center;'>
-            <h3 style='margin-bottom: -15px; margin-top: 0px; padding-top: 0px;'>PEARL System</h3>
-            <p style='font-size: 14px; color: #0284C7; margin-top: 0px; padding-top: 0px;'>
-                <b>User:</b> {st.session_state.username} ({st.session_state.role.capitalize()})
-            </p>
-        </div>
-        """, 
-        unsafe_allow_html=True
-    )
+    # ==========================================
+    # TOP HEADER BAR: CLOCK, DATE & BATTERY STATUS (WITH BACKGROUND COLOR)
+    # ==========================================
+    now_str = datetime.datetime.now().strftime("%B %d, %Y | %I:%M:%S %p")
     
-    st.sidebar.markdown("---")
+    st.markdown(f"""
+        <div style="background-color: #80FFFF; border: 1px solid #E2E8F0; padding: 12px 20px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0px 2px 4px rgba(0,0,0,0.02); margin-bottom: 20px;">
+            <div style="color: #475569; font-size: 20px;">
+                📅 <b>System Time:</b> {now_str}
+            </div>
+            <div>
+                <span style="background-color: #DCFCE7; color: #166534; padding: 5px 12px; border-radius: 19px; font-size: 20px; font-weight: 600;">
+                    🔋 Node Battery: 94% (Stable)
+                </span>
+            </div>
+        </div>
+    """, unsafe_allow_html=True)
 
-    st.sidebar.button("📊 Live Telemetry", on_click=set_page, args=("Live Telemetry",), use_container_width=True)
-    st.sidebar.button("🤖 Breeding Forecast", on_click=set_page, args=("Breeding Forecast",), use_container_width=True)
+    # --- HEADER SMS NOTIFICATION SIMULATOR ---
+    active_device_sn = st.session_state.get("active_device_sn")
+    if active_device_sn:
+        latest_data = fetch_latest_data(active_device_sn)
+        if latest_data:
+            temp = latest_data.get('temperature', 0)
+            ph = latest_data.get('ph', 0)
+            turb = latest_data.get('turbidity', 0)
+            
+            alert_messages = []
+            if temp > 33 or temp < 26: alert_messages.append(f"Temperature ({temp}°C)")
+            if ph > 9.0 or ph < 6.5: alert_messages.append(f"pH Level ({ph})")
+            if turb > 100: alert_messages.append(f"Turbidity ({turb} NTU)")
+            
+            if alert_messages:
+                st.error(f"📱 **SMS ALERT TRIGGERED:** Critical conditions detected in {', '.join(alert_messages)}! Please intervene immediately.", icon="🚨")
+    # Render the separated sidebar component
+    sidebar.render(set_page_callback=set_page, logout_callback=handle_logout)
 
-    if st.session_state.role == "admin":
-        st.sidebar.button("🌐 Network Overview", on_click=set_page, args=("Network Overview",), use_container_width=True)
-
-    st.sidebar.button("📂 Telemetry Records", on_click=set_page, args=("Telemetry Records",), use_container_width=True)
-
-    if st.session_state.role == "admin":
-        st.sidebar.markdown("---")
-        node_selector.render()
-
-    st.sidebar.markdown("<br>", unsafe_allow_html=True)
-    st.sidebar.markdown("---")
-    st.sidebar.markdown("#### ⚙️ SYSTEM")
-
-    st.sidebar.button("👥 Account Management", on_click=set_page, args=("Account Management",), use_container_width=True)
-    st.sidebar.button("⚙️ System Settings", on_click=set_page, args=("System Settings",), use_container_width=True)
-    st.sidebar.button("🚪 Logout", on_click=handle_logout, use_container_width=True, type="primary")
-
+    # Route the current page to the correct view
     page = st.session_state.current_page
 
     if page == "Live Telemetry": 
         view_telemetry.render()
-    elif page == "Breeding Forecast": 
+    elif page in ["Breeding Forecast", "AI Breeding Forecast"]: 
         view_forecast.render()
     elif page == "Network Overview": 
         view_admin_overview.render()
+    elif page == "System Health":
+        view_system_health.render()
     elif page == "Account Management": 
         view_account_management.render()
     elif page == "Telemetry Records": 

@@ -1,12 +1,11 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-from data_fetcher import (
-    fetch_history_data,
-    fetch_devices,
-    fetch_latest_data,
-    fetch_iso25010_performance,
-)
+import datetime
+
+# Using the new API modules
+from api.telemetry_api import fetch_history_data, fetch_latest_data, fetch_iso25010_performance
+from api.device_api import fetch_devices
 
 def calculate_risk_score(temp, ph, turb):
     score = 0
@@ -19,7 +18,7 @@ def calculate_risk_score(temp, ph, turb):
     return min(score, 100)
 
 def render():
-    st.title("📂 Telemetry Records & ISO/IEC 25010 Analytics")
+    st.title("📂 Telemetry Records & Analytics")
     
     if st.session_state.role == "admin":
         tab_telemetry, tab_iso = st.tabs(["📊 Pond Telemetry Masterlist", "⚡ ISO/IEC 25010 Performance Efficiency Logs"])
@@ -28,6 +27,16 @@ def render():
         tab_iso = None
 
     with tab_telemetry:
+        # --- COMMON DATE FILTER ---
+        st.markdown("### 📅 Filter Data by Date")
+        col_date1, col_date2 = st.columns(2)
+        start_date = col_date1.date_input("Start Date", datetime.date.today() - datetime.timedelta(days=7))
+        end_date = col_date2.date_input("End Date", datetime.date.today())
+        
+        start_str = start_date.strftime("%Y-%m-%d 00:00:00")
+        end_str = end_date.strftime("%Y-%m-%d 23:59:59")
+        st.markdown("---")
+
         if st.session_state.role == "admin":
             devices = fetch_devices(st.session_state.user_id, st.session_state.role)
             st.markdown("### 🚨 Farmer Risk Ranking (Danger to Normal)")
@@ -56,34 +65,56 @@ def render():
             st.markdown("---")
             st.markdown("### 📋 Raw Masterlist Exporter")
             all_history = []
-            for dev in devices:
-                history = fetch_history_data(dev['device_sn'], limit=100)
-                if history:
-                    for record in history:
-                        record['Owner'] = f"Farmer {dev['owner_id']}"
-                        record['Pond Name'] = dev['pond_name']
-                        all_history.append(record)
+            
+            with st.spinner("Compiling and filtering masterlist..."):
+                for dev in devices:
+                    history = fetch_history_data(dev['device_sn'], limit=500) # Increased limit for better exporting
+                    if history:
+                        for record in history:
+                            record['Owner'] = f"Farmer {dev['owner_id']}"
+                            record['Pond Name'] = dev['pond_name']
+                            all_history.append(record)
                         
             if all_history:
                 df = pd.DataFrame(all_history)
                 df = df[["timestamp", "Owner", "Pond Name", "temperature", "ph", "turbidity", "water_level_cm"]].sort_values(by="timestamp", ascending=False)
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button(label="📥 Download Masterlist (Excel/CSV)", data=csv, file_name='pearl_network_masterlist.csv', mime='text/csv', type="primary")
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                
+                # Apply Date Filter
+                mask = (df['timestamp'] >= start_str) & (df['timestamp'] <= end_str)
+                filtered_df = df.loc[mask]
+
+                if not filtered_df.empty:
+                    csv = filtered_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(label="📥 Download Filtered Masterlist (CSV)", data=csv, file_name=f'pearl_network_masterlist_{start_date}_to_{end_date}.csv', mime='text/csv', type="primary")
+                    st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No records found in the selected date range.")
+                    
         else:
             active_device = st.session_state.get("active_device_sn", "PEARL-ESP32-001")
-            history = fetch_history_data(active_device, limit=200)
+            st.markdown(f"### Data for Node: `{active_device}`")
+            history = fetch_history_data(active_device, limit=500)
+            
             if history:
                 df = pd.DataFrame(history)[["timestamp", "temperature", "ph", "turbidity", "water_level_cm"]]
-                csv = df.to_csv(index=False).encode('utf-8')
-                st.download_button(label="📥 Export Data (Excel/CSV)", data=csv, file_name=f'{active_device}_telemetry_log.csv', mime='text/csv', type="primary")
-                st.dataframe(df, use_container_width=True, hide_index=True)
+                
+                # Apply Date Filter
+                mask = (df['timestamp'] >= start_str) & (df['timestamp'] <= end_str)
+                filtered_df = df.loc[mask]
+
+                if not filtered_df.empty:
+                    csv = filtered_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(label="📥 Export Filtered Data (CSV)", data=csv, file_name=f'{active_device}_telemetry_{start_date}_to_{end_date}.csv', mime='text/csv', type="primary")
+                    st.dataframe(filtered_df, use_container_width=True, hide_index=True)
+                else:
+                    st.info("No records found in the selected date range.")
 
     # =========================================================
     # ADMIN TAB 2: ISO/IEC 25010 PERFORMANCE EFFICIENCY LOGS
     # =========================================================
     if tab_iso is not None:
         with tab_iso:
+            # (Keep your existing ISO tab code here exactly as it was)
             st.markdown("### ⚡ ISO/IEC 25010 Performance Efficiency Empirical Logs")
             st.caption(
                 "Automatically captures real-time millisecond (`ms`) response latency across IoT ingestion, "

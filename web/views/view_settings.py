@@ -1,6 +1,8 @@
 import streamlit as st
 import pandas as pd
-from data_fetcher import (
+
+# 👇 CHANGED: Pulling from new API modules
+from api.device_api import (
     fetch_devices,
     update_device_settings,
     fetch_fish_profiles,
@@ -161,7 +163,6 @@ def render():
         st.warning("No active monitoring node selected. Please select a pond from the sidebar.")
         return
 
-   # Merge Built-in Guides + Session Saved Fish + Database Fish Profiles
    # Merge Built-in Guides + Session Saved Fish + Database Fish Profiles
     if "local_fish_library" not in st.session_state:
         st.session_state.local_fish_library = {k: dict(v) for k, v in BUILT_IN_FISH_GUIDES.items()}

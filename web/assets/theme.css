@@ -1,0 +1,79 @@
+/* 🛑 HIDE THE SIDEBAR CLOSE BUTTON TO PREVENT HIDING */
+[data-testid="stSidebarCollapseButton"] {
+    display: none !important;
+}
+
+/* SIDEBAR TOGGLE */
+[data-testid="collapsedControl"] {
+    background-color: #0284C7 !important; 
+    border-radius: 50% !important;
+    margin-top: 10px !important;
+    margin-left: 10px !important;
+    box-shadow: 0px 4px 10px rgba(2, 132, 199, 0.4) !important;
+    z-index: 999999 !important;
+}
+[data-testid="collapsedControl"] svg {
+    fill: #FFFFFF !important; 
+}
+
+/* MAIN CONTENT TOP PADDING REMOVAL */
+.block-container {
+    padding-top: 1.5rem !important;
+    padding-bottom: 1rem !important;
+}
+header[data-testid="stHeader"] {
+    background: transparent !important;
+    height: 0px !important;
+}
+
+/* METRIC CARDS */
+div[data-testid="stMetric"] {
+    background-color: rgba(14, 165, 233, 0.05) !important;
+    border: 1px solid rgba(14, 165, 233, 0.2) !important;
+    border-radius: 10px !important;
+    padding: 15px !important;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05) !important;
+    transition: transform 0.2s ease, border-color 0.2s ease !important;
+}
+div[data-testid="stMetric"]:hover { 
+    transform: translateY(-2px); 
+    border-color: rgba(14, 165, 233, 0.6) !important;
+}
+div[data-testid="stMetricLabel"] > label {
+    font-weight: 700 !important;
+    font-size: 0.75rem !important; 
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+/* CONTAINER BORDERS */
+[data-testid="stVerticalBlockBorderWrapper"] {
+    border: 1px solid rgba(14, 165, 233, 0.2) !important;
+    border-radius: 12px !important;
+    background-color: rgba(14, 165, 233, 0.01) !important;
+}
+
+/* UNIVERSAL SUBTEXT STYLING */
+.tagalog-subtext {
+    color: #0EA5E9 !important;
+    font-size: 13px !important; 
+    font-style: italic !important;
+    margin-top: -10px !important; 
+    margin-bottom: 15px !important;
+}
+
+/* HIDE DEFAULT STREAMLIT TOOLBAR */
+.stAppDeployButton, .stDeployButton { display: none !important; }
+
+/* AGGRESSIVE SIDEBAR PADDING REMOVAL */
+[data-testid="stSidebar"] {
+    border-right: 1px solid rgba(14, 165, 233, 0.2) !important;
+}
+[data-testid="stSidebarUserContent"] {
+    padding-top: 0px !important; 
+}
+[data-testid="stSidebarHeader"] {
+    padding: 0px !important;
+    height: 0px !important;
+    min-height: 0px !important;
+}

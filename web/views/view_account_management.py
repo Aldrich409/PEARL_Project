@@ -1,9 +1,12 @@
 import streamlit as st
-from data_fetcher import fetch_all_accounts, admin_create_account, admin_delete_account, update_device_settings
+
+# 👇 CHANGED: Pulling from new API modules
+from api.auth_api import fetch_all_accounts, admin_create_account, admin_delete_account
+from api.device_api import update_device_settings
 
 # Placeholder import just in case you add a password update endpoint to your FastAPI later
 try:
-    from data_fetcher import admin_update_password
+    from api.auth_api import admin_update_password
 except ImportError:
     admin_update_password = None
 

@@ -3,7 +3,9 @@ import pandas as pd
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import requests
-from data_fetcher import fetch_ai_forecast, fetch_history_data
+
+from api.forecast_api import fetch_ai_forecast
+from api.telemetry_api import fetch_history_data
 
 def fetch_7_day_weather():
     lat, lon = 14.5264, 121.1558 
@@ -20,7 +22,11 @@ def render():
     st.title("🤖 Breeding Forecast")
     st.markdown("<p class='tagalog-subtext'>Suriin ang nakaraang 1 buwan at asahan ang susunod na 7 araw</p>", unsafe_allow_html=True)
 
-    active_device = st.session_state.get("active_device_sn", "PEARL-ESP32-001")
+    active_device = st.session_state.get("active_device_sn", None)
+    if not active_device:
+        st.warning("Please select a device node from the sidebar.")
+        return
+
     with st.spinner("Analyzing historical trends and generating 7-day forecast..."):
         history = fetch_history_data(active_device, limit=120) 
         forecasts = fetch_ai_forecast(active_device, days=7)
@@ -33,17 +39,18 @@ def render():
         df_fore = pd.DataFrame(forecasts)
         df_fore['date'] = pd.to_datetime(df_fore['date'])
 
+        # --- CHARTS ROW (Compact Height: 210px) ---
         chart_col1, chart_col2 = st.columns(2)
 
         with chart_col1:
             st.markdown("### 📊 Past 30 Days / Nakaraang Buwan")
             fig_hist = make_subplots(specs=[[{"secondary_y": True}]])
-            fig_hist.add_trace(go.Scatter(x=df_hist['timestamp'], y=df_hist['temperature'], mode='lines', name='Temp (°C)', line=dict(color='#0284C7', width=2)), secondary_y=False)
-            fig_hist.add_trace(go.Scatter(x=df_hist['timestamp'], y=df_hist['ph'], mode='lines', name='pH Level', line=dict(color='#10B981', width=2)), secondary_y=True)
+            fig_hist.add_trace(go.Scatter(x=df_hist['timestamp'], y=df_hist['temperature'], mode='lines', name='Temp (°C)', line=dict(color='#EF4444', width=2)), secondary_y=False)
+            fig_hist.add_trace(go.Scatter(x=df_hist['timestamp'], y=df_hist['ph'], mode='lines', name='pH Level', line=dict(color='#0284C7', width=2)), secondary_y=True)
 
             fig_hist.update_layout(
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=20, r=20, t=20, b=20), height=300
+                margin=dict(l=10, r=10, t=10, b=10), height=210,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
             )
             fig_hist.update_yaxes(title_text="Temp (°C)", secondary_y=False)
             fig_hist.update_yaxes(title_text="pH Level", secondary_y=True, showgrid=False)
@@ -56,8 +63,8 @@ def render():
             fig_fore.add_trace(go.Scatter(x=df_fore['date'], y=df_fore['predicted_ph'], mode='lines+markers', name='Pred pH', line=dict(color='#0EA5E9', width=2, dash='dash')), secondary_y=True)
 
             fig_fore.update_layout(
-                paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                margin=dict(l=20, r=20, t=20, b=20), height=300
+                margin=dict(l=10, r=10, t=10, b=10), height=210,
+                legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
             )
             fig_fore.update_yaxes(title_text="Temp (°C)", secondary_y=False)
             fig_fore.update_yaxes(title_text="pH Level", secondary_y=True, showgrid=False)
@@ -65,6 +72,7 @@ def render():
 
         st.divider()
 
+        # --- WEATHER INTEGRATION (Compact Height: 210px) ---
         if weather_daily and 'time' in weather_daily:
             st.markdown("### 🌤️ 7-Day Surface Weather & Rain Forecast / Pagtatantiya ng Panahon")
             st.markdown("<p class='tagalog-subtext'>External weather directly impacts pond water temperature and turbidity.</p>", unsafe_allow_html=True)
@@ -80,8 +88,7 @@ def render():
                 fig_weather.add_trace(go.Scatter(x=df_weather['time'], y=df_weather['temperature_2m_min'], mode='lines+markers', name='Min Temp (°C)', line=dict(color='#F59E0B', width=2)), secondary_y=False)
 
                 fig_weather.update_layout(
-                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(l=20, r=20, t=20, b=20), height=320,
+                    margin=dict(l=10, r=10, t=10, b=10), height=210,
                     hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
                 )
                 fig_weather.update_yaxes(title_text="Air Temp (°C)", secondary_y=False)
@@ -98,19 +105,20 @@ def render():
                     name='Chance of Rain (%)', 
                     fill='tozeroy',
                     line=dict(color='#0284C7', width=2), 
-                    marker=dict(size=6)
+                    fillcolor='rgba(2, 132, 199, 0.2)',
+                    marker=dict(size=5)
                 ))
 
                 fig_rain_prob.update_layout(
-                    paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(l=20, r=20, t=20, b=20), height=320,
+                    margin=dict(l=10, r=10, t=10, b=10), height=210,
                     yaxis=dict(title="Probability (%)", range=[0, 100]),
                     hovermode="x unified", legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="center", x=0.5)
                 )
                 st.plotly_chart(fig_rain_prob, use_container_width=True, theme="streamlit")
 
-            st.divider()
+        st.divider()
 
+        # --- AI ACTION PLAN CARDS ---
         st.markdown("### 📋 7-Day Action Plan / Plano para sa Susunod na Linggo")
 
         for day in forecasts:
@@ -119,10 +127,17 @@ def render():
             action_parts = action.split("\n")
             eng_action = action_parts[0] if len(action_parts) > 0 else ""
             tag_action = action_parts[1] if len(action_parts) > 1 else ""
-            msg_type = "success" if "Optimal" in status or "Stable" in status else "warning" if "Warning" in status or "Risk" in status else "error"
+            
+            if "Optimal" in status or "Stable" in status or "Magandang" in status: 
+                msg_type = "success"
+            elif "Warning" in status or "Risk" in status or "BABALA" in status: 
+                msg_type = "warning"
+            else: 
+                msg_type = "error"
 
             with st.container():
-                st.subheader(f"📅 Date / Petsa: {day['date']}")
+                st.markdown(f"#### 📅 Date / Petsa: {day['date']}")
+                
                 cA, cB, cC = st.columns(3)
                 cA.metric("Predicted Temp / Temperatura", f"{day['predicted_temperature']} °C")
                 cB.metric("Predicted pH / Antas ng pH", f"{day['predicted_ph']}")
@@ -130,23 +145,22 @@ def render():
 
                 if msg_type == "success":
                     st.markdown(f"""
-                    <div style="background-color: rgba(16, 185, 129, 0.15); color: inherit; padding: 15px; border-radius: 8px; border-left: 4px solid #10B981;">
+                    <div style="background-color: rgba(16, 185, 129, 0.15); padding: 12px; border-radius: 8px; border-left: 4px solid #10B981; margin-bottom: 15px;">
                         <strong>{status}</strong><br><br>🇬🇧 {eng_action}<br><br>🇵🇭 <em>{tag_action}</em>
                     </div>
                     """, unsafe_allow_html=True)
                 elif msg_type == "warning":
                     st.markdown(f"""
-                    <div style="background-color: rgba(245, 158, 11, 0.15); color: inherit; padding: 15px; border-radius: 8px; border-left: 4px solid #F59E0B;">
+                    <div style="background-color: rgba(245, 158, 11, 0.15); padding: 12px; border-radius: 8px; border-left: 4px solid #F59E0B; margin-bottom: 15px;">
                         <strong>{status}</strong><br><br>🇬🇧 {eng_action}<br><br>🇵🇭 <em>{tag_action}</em>
                     </div>
                     """, unsafe_allow_html=True)
                 else:
                     st.markdown(f"""
-                    <div style="background-color: rgba(239, 68, 68, 0.15); color: inherit; padding: 15px; border-radius: 8px; border-left: 4px solid #EF4444;">
+                    <div style="background-color: rgba(239, 68, 68, 0.15); padding: 12px; border-radius: 8px; border-left: 4px solid #EF4444; margin-bottom: 15px;">
                         <strong>{status}</strong><br><br>🇬🇧 {eng_action}<br><br>🇵🇭 <em>{tag_action}</em>
                     </div>
                     """, unsafe_allow_html=True)
-
-                st.divider()
+                
     else:
         st.info("Insufficient telemetry records for Meta Prophet forecasting / Kulang pa ang datos para sa hula ng AI.")
