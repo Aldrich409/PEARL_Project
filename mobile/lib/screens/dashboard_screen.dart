@@ -6,6 +6,7 @@ import 'forecast_screen.dart';
 import 'network_overview_screen.dart';
 import 'records_screen.dart';
 import 'settings_screen.dart';
+import 'account_management_screen.dart'; // 👈 ADDED IMPORT
 
 class DashboardScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
@@ -61,6 +62,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
         return RecordsScreen(userData: widget.userData, activeDeviceSn: _selectedDeviceSn);
       case 'System Settings':
         return SettingsScreen(userData: widget.userData, activeDeviceSn: _selectedDeviceSn);
+      case 'Account Management': // 👈 ADDED NAVIGATION CASE
+        return AccountManagementScreen(userData: widget.userData);
       default:
         return const Center(child: Text('Page Not Found'));
     }
@@ -91,7 +94,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   return PopupMenuItem<String>(
                     value: dev['device_sn'],
                     child: Text(
-                      "Farmer ${dev['owner_id']} (${dev['pond_name']} - ${dev['fish_type'] ?? 'Tilapia'})",
+                      "Farmer ${dev['owner_id']} (${dev['pond_name']} • ${dev['fish_type'] ?? 'Tilapia'})",
                       style: TextStyle(
                         fontWeight: _selectedDeviceSn == dev['device_sn'] ? FontWeight.bold : FontWeight.normal,
                         color: _selectedDeviceSn == dev['device_sn'] ? primaryColor : null,
@@ -166,6 +169,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
               },
             ),
             const Divider(),
+            
+            // 👈 ADDED ACCOUNT MANAGEMENT BUTTON
+            ListTile(
+              leading: const Icon(Icons.manage_accounts),
+              title: const Text('Account Management'),
+              selected: _currentPage == 'Account Management',
+              selectedColor: primaryColor,
+              onTap: () {
+                setState(() => _currentPage = 'Account Management');
+                Navigator.pop(context);
+              },
+            ),
+            
             ListTile(
               leading: const Icon(Icons.settings),
               title: const Text('System Settings'),

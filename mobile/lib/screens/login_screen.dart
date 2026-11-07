@@ -54,7 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
   @override
   Widget build(BuildContext context) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
-    final primaryBlue = const Color(0xFF0284C7);
+    const primaryBlue = Color(0xFF0284C7);
 
     return Scaffold(
       body: SafeArea(
@@ -74,7 +74,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       shape: BoxShape.circle,
                       boxShadow: [
                         BoxShadow(
-                          color: primaryBlue.withOpacity(0.3),
+                          color: primaryBlue.withValues(alpha: 0.3),
                           blurRadius: 15,
                           offset: const Offset(0, 5),
                         ),
@@ -93,7 +93,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800),
                   ),
                   const SizedBox(height: 4),
-                  Text(
+                  const Text(
                     'Predictive Environmental Analytics for Real-Time Aquaculture Logging',
                     textAlign: TextAlign.center,
                     style: TextStyle(
@@ -117,7 +117,7 @@ class _LoginScreenState extends State<LoginScreen> {
                       ),
                       boxShadow: [
                         BoxShadow(
-                          color: Colors.black.withOpacity(isDark ? 0.3 : 0.05),
+                          color: Colors.black.withValues(alpha :isDark ? 0.3 : 0.05),
                           blurRadius: 10,
                           offset: const Offset(0, 4),
                         ),

@@ -1,10 +1,7 @@
 import streamlit as st
-
-# 👇 CHANGED: Pulling from new API modules
 from api.auth_api import fetch_all_accounts, admin_create_account, admin_delete_account
 from api.device_api import update_device_settings
 
-# Placeholder import just in case you add a password update endpoint to your FastAPI later
 try:
     from api.auth_api import admin_update_password
 except ImportError:
@@ -82,19 +79,16 @@ def render():
         st.markdown("#### 📝 Edit My Profile & Pond Details")
         accounts = fetch_all_accounts()
         
-        # Filter the list so the farmer only sees their own account block
-        my_account = [acc for acc in accounts if acc['id'] == current_user_id]
+        my_account = [acc for acc in accounts if str(acc['id']) == str(current_user_id)]
         
         if my_account:
             render_account_editor(my_account, is_admin=False)
         else:
             st.error("Account details not found.")
 
-
 def render_account_editor(accounts, is_admin):
     """Reusable UI component that dynamically adjusts buttons based on role."""
     for acc in accounts:
-        # Auto-expand the view if a farmer is looking at their solitary profile
         with st.expander(f"👤 {acc['username']} ({acc['role'].upper()}) - Pond: {acc['pond_name'] or 'N/A'}", expanded=not is_admin):
             with st.form(f"edit_acc_{acc['id']}"):
                 st.text(f"User ID: {acc['id']} | Device SN: {acc['device_sn'] or 'None (Admin)'}")
@@ -106,17 +100,28 @@ def render_account_editor(accounts, is_admin):
                 
                 st.markdown("##### 🏡 Update Pond Details")
                 e1, e2 = st.columns(2)
-                p_name = e1.text_input("Pond Name", value=acc['pond_name'] or "", key=f"pn_{acc['id']}")
-                p_loc = e2.text_input("Location", value=acc['location'] or "", key=f"loc_{acc['id']}")
+                p_name = e1.text_input("Pond Name", value=acc.get('pond_name') or "", key=f"pn_{acc['id']}")
+                p_loc = e2.text_input("Location", value=acc.get('location') or "", key=f"loc_{acc['id']}")
                 
                 v1, v2, v3, v4, v5 = st.columns(5)
-                p_len = v1.number_input("Length", value=float(acc['length'] or 25.0), key=f"len_{acc['id']}")
-                p_wid = v2.number_input("Width", value=float(acc['width'] or 20.0), key=f"wid_{acc['id']}")
-                p_dep = v3.number_input("Depth", value=float(acc['depth'] or 1.0), key=f"dep_{acc['id']}")
-                p_fish = v4.number_input("Fish Count", value=int(acc['fish_count'] or 500), key=f"fc_{acc['id']}")
-                p_phone = v5.text_input("Phone", value=acc['alert_phone'] or "", key=f"ph_{acc['id']}")
+                p_len = v1.number_input("Length", value=float(acc.get('length') or 25.0), key=f"len_{acc['id']}")
+                p_wid = v2.number_input("Width", value=float(acc.get('width') or 20.0), key=f"wid_{acc['id']}")
+                p_dep = v3.number_input("Depth", value=float(acc.get('depth') or 1.0), key=f"dep_{acc['id']}")
+                p_fish = v4.number_input("Fish Count", value=int(acc.get('fish_count') or 500), key=f"fc_{acc['id']}")
+                p_phone = v5.text_input("Phone", value=acc.get('alert_phone') or "", key=f"ph_{acc['id']}")
                 
-                # If Admin, show both Save and Delete buttons. If Farmer, only show Save.
+                # 👇 NEW: Minimized Fish & Thresholds Settings
+                with st.expander("🐟 Fish Type & Threshold Settings", expanded=False):
+                    f1, f2 = st.columns(2)
+                    p_fish_type = f1.text_input("Active Fish Species", value=acc.get('fish_type') or "Tilapia", key=f"ft_{acc['id']}")
+                    p_turb = f2.number_input("Max Turbidity (NTU)", value=float(acc.get('turb_norm_max') or 80.0), key=f"tmax_{acc['id']}")
+
+                    t1, t2, ph1, ph2 = st.columns(4)
+                    p_tmin = t1.number_input("Temp Min (°C)", value=float(acc.get('temp_norm_min') or 26.0), key=f"tmin_{acc['id']}")
+                    p_tmax = t2.number_input("Temp Max (°C)", value=float(acc.get('temp_norm_max') or 33.0), key=f"tmx_{acc['id']}")
+                    p_pmin = ph1.number_input("pH Min", value=float(acc.get('ph_norm_min') or 7.0), key=f"pmin_{acc['id']}")
+                    p_pmax = ph2.number_input("pH Max", value=float(acc.get('ph_norm_max') or 8.5), key=f"pmx_{acc['id']}")
+                
                 if is_admin:
                     col_save, col_del = st.columns([3, 1])
                 else:
@@ -124,8 +129,6 @@ def render_account_editor(accounts, is_admin):
                     col_del = None
                 
                 if col_save.form_submit_button("Save Changes", type="primary", use_container_width=True):
-                    
-                    # 1. Validate and Handle Password Update
                     if new_password or confirm_new_password:
                         if new_password != confirm_new_password:
                             st.error("❌ New passwords do not match! Details were not saved.")
@@ -135,12 +138,16 @@ def render_account_editor(accounts, is_admin):
                                 admin_update_password(acc['id'], new_password)
                             st.success("✅ Password validated and updated!")
 
-                    # 2. Validate and Handle Pond Node Update
-                    if acc['device_sn']:
+                    if acc.get('device_sn'):
                         updated_device = {
                             "device_sn": acc['device_sn'], "pond_name": p_name, "location": p_loc,
                             "length": p_len, "width": p_wid, "depth": p_dep, "fish_count": p_fish,
-                            "alert_phone": p_phone, "alert_level": "Critical", "sleep_interval": 30, "ph_offset": 0.0, "turb_offset": 0.0
+                            "alert_phone": p_phone, 
+                            "fish_type": p_fish_type, 
+                            "temp_norm_min": p_tmin, "temp_norm_max": p_tmax, 
+                            "ph_norm_min": p_pmin, "ph_norm_max": p_pmax,
+                            "turb_norm_max": p_turb,
+                            "alert_level": "Critical", "sleep_interval": 30, "ph_offset": 0.0, "turb_offset": 0.0
                         }
                         if update_device_settings(updated_device):
                             st.success("✅ Account & Pond details updated successfully!")
@@ -153,7 +160,6 @@ def render_account_editor(accounts, is_admin):
                         else:
                             st.rerun()
                             
-                # Protect the master admin (ID 1) from deletion and restrict delete to Admins only
                 if is_admin and col_del and acc['id'] != 1:  
                     if col_del.form_submit_button("Delete Account", type="secondary", use_container_width=True):
                         if admin_delete_account(acc['id']):

@@ -64,7 +64,7 @@ class PearlApp extends StatelessWidget {
         cardTheme: CardThemeData(
           color: const Color(0xFF1E293B),
           elevation: 4,
-          shadowColor: Colors.black.withOpacity(0.4),
+          shadowColor: Colors.black.withValues(alpha: 0.4),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(20),
           ),
@@ -74,7 +74,7 @@ class PearlApp extends StatelessWidget {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(12),
           ),
-          selectedTileColor: const Color(0xFF38BDF8).withOpacity(0.15),
+          selectedTileColor: const Color(0xFF38BDF8).withValues(alpha:0.15),
         ),
 
         textTheme: GoogleFonts.interTextTheme(Theme.of(context).textTheme).apply(

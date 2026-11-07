@@ -1,5 +1,13 @@
+#if __has_include(<flutter/dart_project.h>)
 #include <flutter/dart_project.h>
 #include <flutter/flutter_view_controller.h>
+#elif __has_include("C:/src/flutter/bin/cache/artifacts/engine/windows-x64/include/flutter/dart_project.h")
+#include "C:/src/flutter/bin/cache/artifacts/engine/windows-x64/include/flutter/dart_project.h"
+#include "C:/src/flutter/bin/cache/artifacts/engine/windows-x64/include/flutter/flutter_view_controller.h"
+#else
+#error "Flutter Windows SDK headers were not found. Install Flutter or update the fallback include path in main.cpp."
+#endif
+
 #include <windows.h>
 
 #include "flutter_window.h"

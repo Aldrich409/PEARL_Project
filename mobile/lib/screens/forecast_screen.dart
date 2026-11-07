@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:fl_chart/fl_chart.dart';
-import 'dart:math';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
 import '../services/api_service.dart';
 
 class ForecastScreen extends StatefulWidget {
   final Map<String, dynamic> userData;
-  final String? activeDeviceSn; 
-  
+  final String? activeDeviceSn;
+
   const ForecastScreen({super.key, required this.userData, this.activeDeviceSn});
 
   @override
@@ -15,17 +16,13 @@ class ForecastScreen extends StatefulWidget {
 
 class _ForecastScreenState extends State<ForecastScreen> {
   bool _isLoading = true;
-  String? _activeDeviceSn;
-  Map<String, dynamic>? _device;
   List<dynamic> _history = [];
-  List<Map<String, dynamic>> _forecastData = [];
-
-  final List<String> _months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+  List<dynamic> _forecasts = [];
+  Map<String, dynamic>? _weatherDaily;
 
   @override
   void initState() {
     super.initState();
-    _generateMockForecast();
     _loadData();
   }
 
@@ -37,264 +34,372 @@ class _ForecastScreenState extends State<ForecastScreen> {
     }
   }
 
-  void _generateMockForecast() {
-    final random = Random();
-    _forecastData = List.generate(7, (index) => {
-      'day': index.toDouble(),
-      'temp': 28.0 + random.nextDouble() * 3,     
-      'ph': 7.0 + random.nextDouble() * 1.5,      
-      'rain_mm': random.nextDouble() * 25,        
-      'rain_prob': random.nextDouble() * 100,     
-    });
+  Future<void> _fetch7DayWeather() async {
+    const lat = 14.5264;
+    const lon = 121.1558;
+    final url = Uri.parse(
+        "https://api.open-meteo.com/v1/forecast?latitude=$lat&longitude=$lon&daily=temperature_2m_max,temperature_2m_min,precipitation_sum,precipitation_probability_max&timezone=Asia%2FManila");
+    try {
+      final response = await http.get(url).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        _weatherDaily = data['daily'];
+      }
+    } catch (e) {
+      debugPrint("Weather fetch failed: $e");
+    }
   }
 
   Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    final devices = await ApiService.getDevices(widget.userData['id'], widget.userData['role']);
-    
-    if (devices.isNotEmpty) {
-      _device = devices.firstWhere((d) => d['device_sn'] == widget.activeDeviceSn, orElse: () => devices[0]);
-      _activeDeviceSn = _device!['device_sn'];
-      _history = await ApiService.getHistory(_activeDeviceSn!, limit: 30) ?? [];
+    if (widget.activeDeviceSn == null) {
+      setState(() => _isLoading = false);
+      return;
     }
+
+    setState(() => _isLoading = true);
+
+    try {
+      // NOTE: Ensure you have getForecast added to your api_service.dart
+      final results = await Future.wait([
+        ApiService.getHistory(widget.activeDeviceSn!, limit: 120),
+        ApiService.getForecast(widget.activeDeviceSn!, days: 7), // Assuming this exists in ApiService
+        _fetch7DayWeather(),
+      ]);
+
+      _history = results[0] as List<dynamic>? ?? [];
+      _forecasts = results[1] as List<dynamic>? ?? [];
+    } catch (e) {
+      debugPrint("Error loading forecast data: $e");
+    }
+
     if (mounted) setState(() => _isLoading = false);
-  }
-
-  // 🚀 NEW: Formats Dates for the X-Axis of the "Past 30 Days" Chart
-  SideTitles _getHistoryDateTitles(double interval) {
-    return SideTitles(
-      showTitles: true,
-      reservedSize: 22,
-      interval: interval,
-      getTitlesWidget: (value, meta) {
-        // Value is the index (0 to length-1). Map it backwards from today.
-        int daysAgo = (_history.length - 1) - value.toInt();
-        if (daysAgo < 0) return const SizedBox.shrink();
-        final date = DateTime.now().subtract(Duration(days: daysAgo));
-        
-        return Padding(
-          padding: const EdgeInsets.only(top: 6.0),
-          child: Text("${_months[date.month - 1]}\n${date.day}", textAlign: TextAlign.center, style: const TextStyle(fontSize: 8, color: Colors.grey, fontWeight: FontWeight.bold, height: 1.1)),
-        );
-      },
-    );
-  }
-
-  // 🚀 NEW: Formats Dates for the X-Axis of the 7-Day Forecast Charts
-  SideTitles _getForecastDateTitles(double interval) {
-    return SideTitles(
-      showTitles: true,
-      reservedSize: 22,
-      interval: interval,
-      getTitlesWidget: (value, meta) {
-        final date = DateTime.now().add(Duration(days: value.toInt()));
-        return Padding(
-          padding: const EdgeInsets.only(top: 6.0),
-          child: Text("${_months[date.month - 1]}\n${date.day}", textAlign: TextAlign.center, style: const TextStyle(fontSize: 8, color: Colors.grey, fontWeight: FontWeight.bold, height: 1.1)),
-        );
-      },
-    );
-  }
-
-  SideTitles _getLeftTitles(double interval) {
-    return SideTitles(
-      showTitles: true,
-      reservedSize: 26,
-      interval: interval,
-      getTitlesWidget: (value, meta) => Text(value.toInt().toString(), style: const TextStyle(fontSize: 9, color: Colors.grey, fontWeight: FontWeight.bold)),
-    );
-  }
-
-  Widget _buildChartContainer(String title, Widget chart, bool isDark, Color primaryColor) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: primaryColor), maxLines: 1, overflow: TextOverflow.ellipsis),
-        const SizedBox(height: 8),
-        Container(
-          height: 180,
-          padding: const EdgeInsets.only(right: 12, left: 4, top: 16, bottom: 8),
-          decoration: BoxDecoration(
-            color: isDark ? const Color(0xFF1E293B) : Colors.white,
-            borderRadius: BorderRadius.circular(16),
-            boxShadow: isDark ? [] : [BoxShadow(color: primaryColor.withOpacity(0.06), blurRadius: 16, offset: const Offset(0, 8))],
-          ),
-          child: chart,
-        ),
-      ],
-    );
-  }
-
-  String _formatDate(int daysFromNow) {
-    final date = DateTime.now().add(Duration(days: daysFromNow));
-    return "${_months[date.month - 1]} ${date.day}, ${date.year}";
-  }
-
-  Map<String, dynamic> _getForecastAction(double temp, double ph, double rainProb) {
-    if (rainProb > 80) return {'color': Colors.blueAccent, 'status': 'Heavy Rain Risk', 'msg': 'High probability of heavy rainfall. Secure pond boundaries, check overflow pipes, and temporarily reduce feeding to prevent water fouling.'};
-    if (ph < 6.5 || ph > 9.0) return {'color': Colors.redAccent, 'status': 'Critical pH Warning', 'msg': 'Severe pH shift predicted. Prepare agricultural lime (calcium carbonate) or water buffers immediately.'};
-    if (temp < 24 || temp > 35) return {'color': Colors.redAccent, 'status': 'Temperature Stress', 'msg': 'Extreme temperature shift expected. Monitor fish behavior closely and adjust aeration systems.'};
-    if (ph < 7.0 || ph > 8.5) return {'color': Colors.orangeAccent, 'status': 'pH Imbalance', 'msg': 'Slight pH imbalance expected. Monitor water quality and prepare for minor adjustments.'};
-    if (temp < 26 || temp > 33) return {'color': Colors.orangeAccent, 'status': 'Mild Temp Shift', 'msg': 'Water temperatures are approaching limits. Maintain standard aeration.'};
-    return {'color': Colors.green, 'status': 'Optimal Breeding', 'msg': 'Conditions are ideal for spawning. Maintain current feed rate and minimize pond disturbances.'};
-  }
-
-  Widget _buildLegendItem(String label, Color color, {bool isDashed = false}) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        isDashed 
-          ? Text("---", style: TextStyle(color: color, fontWeight: FontWeight.bold, letterSpacing: -1))
-          : Icon(Icons.circle, color: color, size: 8),
-        const SizedBox(width: 4),
-        Text(label, style: const TextStyle(fontSize: 8, fontWeight: FontWeight.bold)),
-      ],
-    );
   }
 
   @override
   Widget build(BuildContext context) {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
-    if (_activeDeviceSn == null) return const Center(child: Text("No assigned pond nodes."));
+    if (widget.activeDeviceSn == null) {
+      return const Center(child: Text("Please select a device node from the sidebar."));
+    }
 
     final isDark = Theme.of(context).brightness == Brightness.dark;
     final primaryColor = Theme.of(context).primaryColor;
-    final gridData = FlGridData(show: true, drawVerticalLine: false, getDrawingHorizontalLine: (value) => FlLine(color: Colors.grey.withOpacity(0.15), strokeWidth: 1));
 
     return RefreshIndicator(
       onRefresh: _loadData,
       child: ListView(
         padding: const EdgeInsets.all(16.0),
         children: [
-          Text("🤖 AI Breeding Forecast", style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: primaryColor)),
-          const SizedBox(height: 4),
-          Text("Predictive analytics for ${_device!['pond_name']}", style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: isDark ? Colors.white70 : Colors.black54)),
-          const SizedBox(height: 24),
-
-          // ROW 1: HISTORY & FORECAST
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  children: [
-                    _buildChartContainer("📅 Past 30 Days", _history.isEmpty ? const Center(child: Text("No data.", style: TextStyle(fontSize: 10)))
-                      : LineChart(LineChartData(gridData: gridData, titlesData: FlTitlesData(rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), bottomTitles: AxisTitles(sideTitles: _getHistoryDateTitles(10)), leftTitles: AxisTitles(sideTitles: _getLeftTitles(5))), borderData: FlBorderData(show: false), lineBarsData: [
-                          LineChartBarData(spots: _history.reversed.toList().asMap().entries.map((e) => FlSpot(e.key.toDouble(), (e.value['temperature'] as num).toDouble())).toList(), isCurved: true, color: Colors.cyanAccent, barWidth: 2, dotData: const FlDotData(show: false)),
-                          LineChartBarData(spots: _history.reversed.toList().asMap().entries.map((e) => FlSpot(e.key.toDouble(), (e.value['ph'] as num).toDouble())).toList(), isCurved: true, color: Colors.greenAccent, barWidth: 2, dotData: const FlDotData(show: false)),
-                        ])), isDark, primaryColor),
-                    const SizedBox(height: 4),
-                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [_buildLegendItem("Temp", Colors.cyanAccent), const SizedBox(width: 12), _buildLegendItem("pH", Colors.greenAccent)]),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  children: [
-                    _buildChartContainer("🔮 Next 7 Days", LineChart(LineChartData(gridData: gridData, titlesData: FlTitlesData(rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), bottomTitles: AxisTitles(sideTitles: _getForecastDateTitles(2)), leftTitles: AxisTitles(sideTitles: _getLeftTitles(5))), borderData: FlBorderData(show: false), lineBarsData: _forecastData.isEmpty ? [] : [
-                          LineChartBarData(spots: _forecastData.map((e) => FlSpot(e['day'], e['temp'])).toList(), isCurved: true, color: Colors.orangeAccent, barWidth: 2, dashArray: [5, 5], dotData: const FlDotData(show: true, getDotPainter: _defaultDot)),
-                          LineChartBarData(spots: _forecastData.map((e) => FlSpot(e['day'], e['ph'])).toList(), isCurved: true, color: Colors.blueAccent, barWidth: 2, dashArray: [5, 5], dotData: const FlDotData(show: true, getDotPainter: _defaultDot)),
-                        ])), isDark, primaryColor),
-                    const SizedBox(height: 4),
-                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [_buildLegendItem("Pred Temp", Colors.orangeAccent, isDashed: true), const SizedBox(width: 8), _buildLegendItem("Pred pH", Colors.blueAccent, isDashed: true)]),
-                  ],
-                ),
-              ),
-            ],
+          // HEADER
+          const Text("🤖 Breeding Forecast", style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold)),
+          const Text(
+            "Suriin ang nakaraang 1 buwan at asahan ang susunod na 7 araw",
+            style: TextStyle(fontSize: 12, color: Colors.grey),
           ),
           const SizedBox(height: 24),
 
-          // ROW 2: WEATHER & PROBABILITY
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  children: [
-                    _buildChartContainer("🌧️ Rainfall (mm)", BarChart(BarChartData(gridData: gridData, titlesData: FlTitlesData(rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), bottomTitles: AxisTitles(sideTitles: _getForecastDateTitles(2)), leftTitles: AxisTitles(sideTitles: _getLeftTitles(10))), borderData: FlBorderData(show: false), barGroups: _forecastData.map((e) => BarChartGroupData(x: e['day'].toInt(), barRods: [BarChartRodData(toY: e['rain_mm'], color: Colors.blueAccent, width: 8, borderRadius: const BorderRadius.vertical(top: Radius.circular(4)))])).toList())), isDark, primaryColor),
-                    const SizedBox(height: 4),
-                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [_buildLegendItem("Rainfall", Colors.blueAccent)]),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Column(
-                  children: [
-                    _buildChartContainer("☔ Rain Risk (%)", LineChart(LineChartData(minY: 0, maxY: 100, gridData: gridData, titlesData: FlTitlesData(rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)), bottomTitles: AxisTitles(sideTitles: _getForecastDateTitles(2)), leftTitles: AxisTitles(sideTitles: _getLeftTitles(25))), borderData: FlBorderData(show: false), lineBarsData: _forecastData.isEmpty ? [] : [
-                          LineChartBarData(spots: _forecastData.map((e) => FlSpot(e['day'], e['rain_prob'])).toList(), isCurved: true, color: Colors.blue, barWidth: 2, dotData: const FlDotData(show: false), belowBarData: BarAreaData(show: true, color: Colors.blue.withOpacity(0.3))),
-                        ])), isDark, primaryColor),
-                    const SizedBox(height: 4),
-                    Row(mainAxisAlignment: MainAxisAlignment.center, children: [_buildLegendItem("Probability", Colors.blue)]),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 32),
-
-          // 7-DAY ACTION PLAN
-          Text("📋 7-Day Action Plan / Susunod na Linggo", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: primaryColor)),
+          // 1. PAST 30 DAYS CHART
+          Text("📊 Past 30 Days", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
           const SizedBox(height: 12),
-          
-          ..._forecastData.asMap().entries.map((entry) {
-            final int index = entry.key;
-            final data = entry.value;
-            final String dateStr = _formatDate(index); 
-            final action = _getForecastAction(data['temp'], data['ph'], data['rain_prob']);
-            final Color statusColor = action['color'];
+          _buildHistoricalChart(isDark),
+          const SizedBox(height: 24),
 
-            return Container(
-              margin: const EdgeInsets.only(bottom: 12),
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: isDark ? const Color(0xFF1E293B) : Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                border: Border(left: BorderSide(color: statusColor, width: 4)), 
-                boxShadow: isDark ? [] : [BoxShadow(color: primaryColor.withOpacity(0.06), blurRadius: 10, offset: const Offset(0, 4))],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(dateStr, style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: isDark ? Colors.white : Colors.black87)),
-                      Text("${action['status']}", style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: statusColor)),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      _buildMiniMetric("Temp", "${data['temp'].toStringAsFixed(1)}°C", isDark),
-                      const SizedBox(width: 12),
-                      _buildMiniMetric("pH", data['ph'].toStringAsFixed(1), isDark),
-                      const SizedBox(width: 12),
-                      _buildMiniMetric("Rain", "${data['rain_prob'].toStringAsFixed(0)}%", isDark),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(action['msg'], style: TextStyle(fontSize: 12, height: 1.4, color: isDark ? Colors.white70 : Colors.black87)),
-                ],
-              ),
-            );
-          }),
-          const SizedBox(height: 32),
+          // 2. FORECAST 7 DAYS CHART
+          Text("🔮 Forecast Next 7 Days", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
+          const SizedBox(height: 12),
+          _buildForecastChart(isDark),
+          const SizedBox(height: 24),
+          const Divider(),
+
+          // 3. WEATHER INTEGRATION
+          if (_weatherDaily != null && _weatherDaily!['time'] != null) ...[
+            const SizedBox(height: 12),
+            Text("🌤️ 7-Day Weather & Rain", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
+            const Text("External weather directly impacts pond water.", style: TextStyle(fontSize: 12, color: Colors.grey)),
+            const SizedBox(height: 12),
+            _buildWeatherTempChart(isDark),
+            const SizedBox(height: 16),
+            _buildRainProbabilityChart(isDark),
+            const SizedBox(height: 24),
+            const Divider(),
+          ],
+
+          // 4. ACTION PLAN CARDS
+          const SizedBox(height: 12),
+          Text("📋 7-Day Action Plan", style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: primaryColor)),
+          const SizedBox(height: 16),
+          if (_forecasts.isEmpty)
+            const Text("Insufficient telemetry records for Meta Prophet forecasting.", style: TextStyle(fontStyle: FontStyle.italic)),
+          ..._forecasts.map((day) => _buildActionCard(day, isDark)),
         ],
       ),
     );
   }
 
-  Widget _buildMiniMetric(String label, String value, bool isDark) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(color: isDark ? Colors.black26 : Colors.grey.shade100, borderRadius: BorderRadius.circular(6)),
-      child: Text("$label: $value", style: const TextStyle(fontSize: 10, fontWeight: FontWeight.bold)),
+  // =========================================================================
+  // CHART BUILDERS
+  // =========================================================================
+
+  Widget _buildHistoricalChart(bool isDark) {
+    if (_history.isEmpty) return _emptyChartContainer(isDark);
+
+    List<FlSpot> tempSpots = [];
+    List<FlSpot> phSpots = [];
+    final chronological = _history.reversed.toList();
+
+    for (int i = 0; i < chronological.length; i++) {
+      double t = (chronological[i]['temperature'] as num).toDouble();
+      double p = (chronological[i]['ph'] as num).toDouble();
+      tempSpots.add(FlSpot(i.toDouble(), t));
+      phSpots.add(FlSpot(i.toDouble(), p));
+    }
+
+    return _buildChartContainer(
+      isDark,
+      LineChart(
+        LineChartData(
+          gridData: const FlGridData(show: true, drawVerticalLine: false),
+          titlesData: const FlTitlesData(
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          borderData: FlBorderData(show: true, border: Border(bottom: BorderSide(color: isDark ? Colors.grey.shade800 : const Color(0xFFE2E8F0)), left: BorderSide(color: isDark ? Colors.grey.shade800 : const Color(0xFFE2E8F0)))),
+          lineBarsData: [
+            LineChartBarData(spots: tempSpots, isCurved: true, color: const Color(0xFFEF4444), barWidth: 2.5, dotData: const FlDotData(show: false)),
+            LineChartBarData(spots: phSpots, isCurved: true, color: const Color(0xFF0284C7), barWidth: 2.5, dotData: const FlDotData(show: false)),
+          ],
+        ),
+      ),
+      legend: _buildLegendItem("Temp", const Color(0xFFEF4444), "pH", const Color(0xFF0284C7)),
     );
   }
-}
 
-FlDotPainter _defaultDot(FlSpot spot, double xPercentage, LineChartBarData bar, int index) {
-  return FlDotCirclePainter(radius: 2, color: bar.color ?? Colors.white, strokeWidth: 1, strokeColor: Colors.white);
+  Widget _buildForecastChart(bool isDark) {
+    if (_forecasts.isEmpty) return _emptyChartContainer(isDark);
+
+    List<FlSpot> fTempSpots = [];
+    List<FlSpot> fPhSpots = [];
+
+    for (int i = 0; i < _forecasts.length; i++) {
+      double t = (_forecasts[i]['predicted_temperature'] as num).toDouble();
+      double p = (_forecasts[i]['predicted_ph'] as num).toDouble();
+      fTempSpots.add(FlSpot(i.toDouble(), t));
+      fPhSpots.add(FlSpot(i.toDouble(), p));
+    }
+
+    return _buildChartContainer(
+      isDark,
+      LineChart(
+        LineChartData(
+          gridData: const FlGridData(show: true, drawVerticalLine: false),
+          titlesData: const FlTitlesData(
+            topTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+            rightTitles: AxisTitles(sideTitles: SideTitles(showTitles: false)),
+          ),
+          borderData: FlBorderData(show: true, border: Border(bottom: BorderSide(color: isDark ? Colors.grey.shade800 : const Color(0xFFE2E8F0)), left: BorderSide(color: isDark ? Colors.grey.shade800 : const Color(0xFFE2E8F0)))),
+          lineBarsData: [
+            // Using dashArray for dashed lines!
+            LineChartBarData(spots: fTempSpots, isCurved: true, color: const Color(0xFFF59E0B), barWidth: 2.5, dashArray: [5, 5], dotData: const FlDotData(show: true)),
+            LineChartBarData(spots: fPhSpots, isCurved: true, color: const Color(0xFF0EA5E9), barWidth: 2.5, dashArray: [5, 5], dotData: const FlDotData(show: true)),
+          ],
+        ),
+      ),
+      legend: _buildLegendItem("Pred Temp", const Color(0xFFF59E0B), "Pred pH", const Color(0xFF0EA5E9)),
+    );
+  }
+
+  Widget _buildWeatherTempChart(bool isDark) {
+    List<FlSpot> maxSpots = [];
+    List<FlSpot> minSpots = [];
+    List<dynamic> maxT = _weatherDaily!['temperature_2m_max'];
+    List<dynamic> minT = _weatherDaily!['temperature_2m_min'];
+
+    for (int i = 0; i < maxT.length; i++) {
+      maxSpots.add(FlSpot(i.toDouble(), (maxT[i] as num).toDouble()));
+      minSpots.add(FlSpot(i.toDouble(), (minT[i] as num).toDouble()));
+    }
+
+    return _buildChartContainer(
+      isDark,
+      LineChart(
+        LineChartData(
+          gridData: const FlGridData(show: true, drawVerticalLine: false),
+          titlesData: const FlTitlesData(show: false),
+          borderData: FlBorderData(show: true, border: Border(bottom: BorderSide(color: isDark ? Colors.grey.shade800 : const Color(0xFFE2E8F0)), left: BorderSide(color: isDark ? Colors.grey.shade800 : const Color(0xFFE2E8F0)))),
+          lineBarsData: [
+            LineChartBarData(spots: maxSpots, isCurved: true, color: const Color(0xFFEF4444), barWidth: 2.5),
+            LineChartBarData(spots: minSpots, isCurved: true, color: const Color(0xFFF59E0B), barWidth: 2.5),
+          ],
+        ),
+      ),
+      title: "Max/Min Air Temp (°C)",
+      legend: _buildLegendItem("Max", const Color(0xFFEF4444), "Min", const Color(0xFFF59E0B)),
+    );
+  }
+
+  Widget _buildRainProbabilityChart(bool isDark) {
+    List<FlSpot> probSpots = [];
+    List<dynamic> prob = _weatherDaily!['precipitation_probability_max'];
+
+    for (int i = 0; i < prob.length; i++) {
+      probSpots.add(FlSpot(i.toDouble(), (prob[i] as num).toDouble()));
+    }
+
+    return _buildChartContainer(
+      isDark,
+      LineChart(
+        LineChartData(
+          minY: 0, maxY: 100,
+          gridData: const FlGridData(show: false),
+          titlesData: const FlTitlesData(show: false),
+          borderData: FlBorderData(show: true, border: Border(bottom: BorderSide(color: isDark ? Colors.grey.shade800 : const Color(0xFFE2E8F0)), left: BorderSide(color: isDark ? Colors.grey.shade800 : const Color(0xFFE2E8F0)))),
+          lineBarsData: [
+            LineChartBarData(
+              spots: probSpots, 
+              isCurved: true, 
+              color: const Color(0xFF0284C7), 
+              barWidth: 2,
+              belowBarData: BarAreaData(show: true, color: const Color(0xFF0284C7).withValues(alpha :0.2)),
+            ),
+          ],
+        ),
+      ),
+      title: "Rain Probability Risk (%)",
+    );
+  }
+
+  // =========================================================================
+  // ACTION PLAN CARD BUILDER
+  // =========================================================================
+
+  Widget _buildActionCard(Map<String, dynamic> day, bool isDark) {
+    String status = day['status'] ?? '';
+    String rawAction = day['action_required'] ?? '';
+    List<String> actionParts = rawAction.split("\n");
+    String engAction = actionParts.isNotEmpty ? actionParts[0] : "";
+    String tagAction = actionParts.length > 1 ? actionParts[1] : "";
+
+    Color cardColor;
+    Color accentColor;
+
+    if (status.contains("Optimal") || status.contains("Stable") || status.contains("Magandang")) {
+      accentColor = const Color(0xFF10B981);
+    } else if (status.contains("Warning") || status.contains("Risk") || status.contains("BABALA")) {
+      accentColor = const Color(0xFFF59E0B);
+    } else {
+      accentColor = const Color(0xFFEF4444);
+    }
+    cardColor = accentColor.withValues(alpha :0.15);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.transparent : const Color(0xFFE2E8F0)),
+        boxShadow: isDark ? [] : [BoxShadow(color: Colors.black.withValues(alpha :0.03), blurRadius: 8, offset: const Offset(0, 4))],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Date Header
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Text("📅 Date: ${day['date']}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          ),
+          
+          // Metrics Row
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                _buildSmallMetric("Pred Temp", "${day['predicted_temperature']} °C", isDark),
+                _buildSmallMetric("Pred pH", "${day['predicted_ph']}", isDark),
+                _buildSmallMetric("Turbidity", "${day['predicted_turbidity']} NTU", isDark),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Colored Alert Box
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: cardColor,
+              border: Border(left: BorderSide(color: accentColor, width: 4)),
+              borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(12), bottomRight: Radius.circular(12)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(status, style: TextStyle(fontWeight: FontWeight.bold, color: isDark ? Colors.white : Colors.black87)),
+                const SizedBox(height: 8),
+                if (engAction.isNotEmpty) Text("🇬🇧 $engAction", style: TextStyle(fontSize: 13, color: isDark ? Colors.white70 : Colors.black87)),
+                const SizedBox(height: 4),
+                if (tagAction.isNotEmpty) Text("🇵🇭 $tagAction", style: TextStyle(fontSize: 13, fontStyle: FontStyle.italic, color: isDark ? Colors.white70 : Colors.black87)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // =========================================================================
+  // HELPER WIDGETS
+  // =========================================================================
+
+  Widget _buildChartContainer(bool isDark, Widget chart, {Widget? legend, String? title}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 10),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.transparent : const Color(0xFFE2E8F0)),
+      ),
+      child: Column(
+        children: [
+          if (title != null) ...[Text(title, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)), const SizedBox(height: 10)],
+          SizedBox(height: 200, child: chart),
+          if (legend != null) ...[const SizedBox(height: 12), legend],
+        ],
+      ),
+    );
+  }
+
+  Widget _emptyChartContainer(bool isDark) {
+    return Container(
+      height: 220,
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF1E293B) : Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: isDark ? Colors.transparent : const Color(0xFFE2E8F0)),
+      ),
+      child: const Center(child: Text("No data available.")),
+    );
+  }
+
+  Widget _buildSmallMetric(String label, String value, bool isDark) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: TextStyle(fontSize: 10, color: isDark ? Colors.grey : const Color(0xFF64748B))),
+        Text(value, style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: isDark ? Colors.white : const Color(0xFF0F172A))),
+      ],
+    );
+  }
+
+  Widget _buildLegendItem(String l1, Color c1, String l2, Color c2) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.circle, color: c1, size: 10), const SizedBox(width: 4), Text(l1, style: const TextStyle(fontSize: 11)),
+        const SizedBox(width: 16),
+        Icon(Icons.circle, color: c2, size: 10), const SizedBox(width: 4), Text(l2, style: const TextStyle(fontSize: 11)),
+      ],
+    );
+  }
 }

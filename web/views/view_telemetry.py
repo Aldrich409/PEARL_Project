@@ -5,6 +5,7 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import base64
 import os
+import requests
 
 from api.telemetry_api import (
     fetch_latest_data,
@@ -14,6 +15,20 @@ from api.telemetry_api import (
     fetch_farmer_interventions,
 )
 from api.device_api import fetch_devices
+
+# =========================================================
+# HELPER FUNCTIONS
+# =========================================================
+def fetch_current_weather():
+    """Fetches real-time weather matching the mobile app."""
+    try:
+        url = "https://api.open-meteo.com/v1/forecast?latitude=14.5264&longitude=121.1558&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=Asia%2FManila"
+        res = requests.get(url)
+        if res.status_code == 200:
+            return res.json().get('current')
+    except Exception as e:
+        print(f"Weather fetch error: {e}")
+    return None
 
 def evaluate_environment(temp, ph, turb):
     if turb > 100:
@@ -120,6 +135,9 @@ def generate_harvest_certificate_html(audit_data):
     </html>
     """
 
+# =========================================================
+# MAIN RENDER
+# =========================================================
 def render():
     st.title("📡 Live Telemetry Dashboard")
     st.markdown("<p class='tagalog-subtext' style='font-size: 12px; padding-bottom: 0px;'>Kasalukuyang Sukat ng Tubig sa Palaisdaan</p>", unsafe_allow_html=True)
@@ -133,14 +151,34 @@ def render():
 
     devices = fetch_devices(st.session_state.user_id, st.session_state.role)
     active_device = next((d for d in devices if d['device_sn'] == active_device_sn), None)
+    
+    if not active_device:
+        st.error("Device configuration not found.")
+        return
+
     latest = fetch_latest_data(active_device_sn)
     history = fetch_history_data(active_device_sn, limit=50)
     bio_audit = fetch_bio_audit(active_device_sn)
     interventions = fetch_farmer_interventions(active_device_sn, limit=10)
 
-    if not active_device:
-        st.error("Device configuration not found.")
-        return
+    # =========================================================
+    # 0. LOCAL WEATHER BANNER
+    # =========================================================
+    weather = fetch_current_weather()
+    if weather:
+        location = active_device.get('location', 'Angono, Rizal')
+        st.markdown(f"<h4 style='color: #0EA5E9; margin-bottom: 10px;'>🌤️ Local Weather ({location})</h4>", unsafe_allow_html=True)
+        
+        # Changed from 4 columns to 3 columns so they stretch to max width
+        wc1, wc2, wc3 = st.columns(3)
+        with wc1.container(border=True):
+            st.metric("AIR TEMP", f"{weather.get('temperature_2m', '--')} °C")
+        with wc2.container(border=True):
+            st.metric("HUMIDITY", f"{weather.get('relative_humidity_2m', '--')} %")
+        with wc3.container(border=True):
+            st.metric("WIND", f"{weather.get('wind_speed_10m', '--')} km/h")
+            
+        st.markdown("<br>", unsafe_allow_html=True)
 
     # =========================================================
     # TOP ROW: HISTORICAL TRENDS (LEFT) + LIVE METRICS (RIGHT)
@@ -150,9 +188,9 @@ def render():
     # LEFT: Historical Water Conditions Chart
     with top_col_chart:
         ch_h1, ch_h2 = st.columns([4, 1])
-        ch_h1.markdown("<h3 style='font-size: 40px; margin-bottom: 0px; padding-bottom: 10px;'>📈 Historical water conditions</h3>", unsafe_allow_html=True)
-        ch_h1.markdown("<p style='color: #64748B; font-size: 15px; font-weight: 600; margin-top: -15px; padding-left: 10px;'>Temperature and pH trends • dual-axis view</p>", unsafe_allow_html=True)
-        ch_h2.markdown("<div style='text-align: right;'><span style='background-color: #EFF6FF; color: #1E40AF; padding: 4px 12px; border-radius: 12px; font-size: 15px; font-weight: 600;'>Last 50 Reads</span></div>", unsafe_allow_html=True)
+        ch_h1.markdown("<h3 style='font-size: 32px; margin-bottom: 0px; padding-bottom: 10px;'>📈 Historical water conditions</h3>", unsafe_allow_html=True)
+        ch_h1.markdown("<p style='color: #64748B; font-size: 14px; font-weight: 600; margin-top: -15px; padding-left: 5px;'>Temperature and pH trends • dual-axis view</p>", unsafe_allow_html=True)
+        ch_h2.markdown("<div style='text-align: right;'><span style='background-color: #EFF6FF; color: #1E40AF; padding: 4px 12px; border-radius: 12px; font-size: 13px; font-weight: 600;'>Last 50 Reads</span></div>", unsafe_allow_html=True)
 
         if history:
             df = pd.DataFrame(history)
@@ -160,7 +198,7 @@ def render():
             with st.container(border=True):
                 fig_wq = make_subplots(specs=[[{"secondary_y": True}]])
                 
-                # CHANGED: Red solid line for Temperature
+                # Red solid line for Temperature
                 fig_wq.add_trace(go.Scatter(
                     x=df['timestamp'], y=df['temperature'],
                     name='Temperature °C',
@@ -169,7 +207,7 @@ def render():
                     marker=dict(size=5)
                 ), secondary_y=False)
                 
-                # CHANGED: Blue solid line for pH
+                # Blue solid line for pH
                 fig_wq.add_trace(go.Scatter(
                     x=df['timestamp'], y=df['ph'],
                     name='pH Level',
@@ -199,7 +237,7 @@ def render():
 
     # RIGHT: Live Sensor Metrics Cards (2x2 Grid Layout)
     with top_col_metrics:
-        st.markdown("<div style='margin-top: 90px;'></div>", unsafe_allow_html=True) # Spacer to push down
+        st.markdown("<div style='margin-top: 85px;'></div>", unsafe_allow_html=True) # Spacer to push down
         if latest:
             t_val = latest.get('temperature', 0)
             ph_val = latest.get('ph', 0)
@@ -220,37 +258,42 @@ def render():
 
 
     # =========================================================
-    # SECOND ROW: WATER QUALITY OVERVIEW & TURBIDITY
+    # SECOND ROW: WATER QUALITY OVERVIEW (AREA CHART) & TURBIDITY
     # =========================================================
     if history:
         st.markdown("<br>", unsafe_allow_html=True)
-        col_donut, col_turb = st.columns([1, 1])
+        col_area, col_turb = st.columns([1, 1])
         
-        with col_donut:
-            st.markdown("### 📊 Water quality overview")
+        with col_area:
+            st.markdown("### 📊 Water quality risk trend")
             with st.container(border=True):
-                optimal_count, warning_count, critical_count = 0, 0, 0
-                for r in history:
-                    rs = calculate_risk_score(r['temperature'], r['ph'], r['turbidity'])
-                    if rs >= 50: critical_count += 1
-                    elif rs >= 20: warning_count += 1
-                    else: optimal_count += 1
-                    
-                donut_data = pd.DataFrame({
-                    "Status": ["Optimal", "Warning", "Critical"],
-                    "Count": [optimal_count, warning_count, critical_count]
-                })
-                fig_donut = px.pie(
-                    donut_data, values="Count", names="Status", hole=0.65,
-                    color="Status", 
-                    color_discrete_map={"Optimal": "#10B981", "Warning": "#F59E0B", "Critical": "#EF4444"}
-                )
-                fig_donut.update_layout(
+                # Calculate risk scores for each timestamp in history
+                df['risk_score'] = df.apply(lambda row: calculate_risk_score(row['temperature'], row['ph'], row['turbidity']), axis=1)
+                
+                # Build an Area Chart plotting risk over time
+                fig_area = go.Figure()
+                
+                # 1. ADD COLORED BACKGROUND ZONES
+                fig_area.add_hrect(y0=0, y1=20, fillcolor="#10B981", opacity=0.15, line_width=0, annotation_text="Optimal", annotation_position="top left", annotation_font_color="#10B981")
+                fig_area.add_hrect(y0=20, y1=50, fillcolor="#F59E0B", opacity=0.15, line_width=0, annotation_text="Warning", annotation_position="top left", annotation_font_color="#F59E0B")
+                fig_area.add_hrect(y0=50, y1=100, fillcolor="#EF4444", opacity=0.15, line_width=0, annotation_text="Critical", annotation_position="top left", annotation_font_color="#EF4444")
+                
+                # 2. Add the actual risk trendline on top
+                fig_area.add_trace(go.Scatter(
+                    x=df['timestamp'], 
+                    y=df['risk_score'],
+                    mode='lines',
+                    line=dict(color='#1E293B', width=2.5, shape='spline'),
+                    name="Risk Score"
+                ))
+                
+                fig_area.update_layout(
                     paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)',
-                    margin=dict(l=5, r=5, t=5, b=5), height=210, showlegend=True,
-                    legend=dict(orientation="v", yanchor="middle", y=0.5, xanchor="left", x=0.9)
+                    margin=dict(l=10, r=10, t=10, b=10), height=210,
+                    xaxis=dict(showgrid=False, title=""),
+                    yaxis=dict(showgrid=True, gridcolor='#E2E8F0', title="", range=[0, 100])
                 )
-                st.plotly_chart(fig_donut, use_container_width=True, key=f"donut_{active_device_sn}")
+                st.plotly_chart(fig_area, use_container_width=True, key=f"area_{active_device_sn}")
 
         with col_turb:
             st.markdown("### 🌊 Turbidity by day")
@@ -273,21 +316,51 @@ def render():
                 )
                 st.plotly_chart(fig_turb, use_container_width=True, key=f"turb_{active_device_sn}")
 
-    # =========================================================
+   
+   # =========================================================
     # 3. POND DIMENSIONS & VIRTUAL BIO-ESTIMATOR
     # =========================================================
     st.markdown("---")
-    st.markdown("### 📏 Pond Dimensions & Capacity (Sukat at Dami ng Isda)")
+    st.markdown("### 📏 Pond Specifications & Capacity (Sukat at Dami ng Isda)")
     length, width, depth = float(active_device['length']), float(active_device['width']), float(active_device['depth'])
     volume = length * width * depth
+    fish_type = active_device.get('fish_type', 'Tilapia')
     
-    c1, c2, c3, c4, c5 = st.columns(5)
-    c1.metric("Length", f"{length} m")
-    c2.metric("Width", f"{width} m")
-    c3.metric("Depth", f"{depth} m")
-    c4.metric("Volume", f"{volume:.1f} m³")
-    c5.metric("Fish Count", str(active_device['fish_count']))
+    # Custom HTML template to perfectly mimic Streamlit's metric box but with a controllable font size
+   # Custom HTML template to perfectly mimic Streamlit's metric box with a hover effect
+    def custom_metric_box(label, value):
+        return f"""
+        <style>
+        .custom-metric-card {{
+            background-color: #f7fdff; 
+            border: 1px solid #b8ebfc; 
+            border-radius: 8px; 
+            padding: 16px;
+            display: flex; 
+            flex-direction: column;
+            height: 100%;
+            transition: border-color 0.2s ease;
+        }}
+        .custom-metric-card:hover {{
+            border-color: #70e5ff; 
+            transform: scale(1.03); 
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08); 
+        }}
+        </style>
+        <div class="custom-metric-card">
+            <span style="font-size: 14px; color: #64748B; margin-bottom: 4px;">{label}</span>
+            <span style="font-size: 22px; font-weight: 600; color: #31333F; line-height: 1.2; word-wrap: break-word;">{value}</span>
+        </div>
+        """
 
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
+    
+    with c1: st.markdown(custom_metric_box("Species", fish_type), unsafe_allow_html=True)
+    with c2: st.markdown(custom_metric_box("Length", f"{length} m"), unsafe_allow_html=True)
+    with c3: st.markdown(custom_metric_box("Width", f"{width} m"), unsafe_allow_html=True)
+    with c4: st.markdown(custom_metric_box("Depth", f"{depth} m"), unsafe_allow_html=True)
+    with c5: st.markdown(custom_metric_box("Volume", f"{volume:.1f} m³"), unsafe_allow_html=True)
+    with c6: st.markdown(custom_metric_box("Fish Count", str(active_device['fish_count'])), unsafe_allow_html=True)
     if latest:
         if bio_audit and "virtual_bio" in bio_audit:
             vb = bio_audit["virtual_bio"]

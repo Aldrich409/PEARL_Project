@@ -1,6 +1,8 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 class ApiService {
   static const String baseUrl = 'http://localhost:8000';
@@ -33,13 +35,73 @@ class ApiService {
     await prefs.clear();
   }
 
+  // --- ACCOUNT MANAGEMENT ---
+  static Future<List<dynamic>> getAllAccounts() async {
+    final url = Uri.parse('$baseUrl/api/admin/accounts'); // 👈 FIXED
+    try {
+      final res = await http.get(url);
+      if (res.statusCode == 200) {
+        final decoded = jsonDecode(res.body);
+        if (decoded is Map<String, dynamic> && decoded.containsKey('accounts')) {
+          return decoded['accounts']; 
+        }
+        return decoded as List<dynamic>;
+      } else {
+        debugPrint("Backend returned status code: ${res.statusCode}");
+      }
+    } catch (e) {
+      debugPrint("Error fetching accounts: $e");
+    }
+    return [];
+  }
+  
+  static Future<bool> adminCreateAccount(Map<String, dynamic> payload) async {
+    final url = Uri.parse('$baseUrl/api/admin/accounts/create'); // 👈 FIXED
+    try {
+      final res = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(payload),
+      );
+      return res.statusCode == 200 || res.statusCode == 201;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static Future<bool> adminUpdatePassword(int userId, String newPassword) async {
+    final url = Uri.parse('$baseUrl/api/admin/accounts/$userId/password'); // 👈 FIXED
+    try {
+      final res = await http.put(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'password': newPassword}),
+      );
+      return res.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  static Future<bool> adminDeleteAccount(int userId) async {
+    final url = Uri.parse('$baseUrl/api/admin/accounts/$userId'); // 👈 FIXED
+    try {
+      final res = await http.delete(url);
+      return res.statusCode == 200;
+    } catch (e) {
+      return false;
+    }
+  }
+
   // --- DATA FETCHING ---
   static Future<List<dynamic>> getDevices(int userId, String role) async {
     final url = Uri.parse('$baseUrl/api/devices?user_id=$userId&role=$role');
     try {
       final res = await http.get(url);
       if (res.statusCode == 200) return jsonDecode(res.body);
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Error fetching devices: $e');
+    }
     return [];
   }
 
@@ -63,16 +125,20 @@ class ApiService {
     try {
       final res = await http.get(url);
       if (res.statusCode == 200) return jsonDecode(res.body);
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Error fetching fish profiles: $e');
+    }
     return [];
   }
 
-  static Future<Map<String, dynamic>?> getFishSuggestion(String fishName) async {
+  static Future<dynamic> getFishSuggestion(String fishName) async {
     final url = Uri.parse('$baseUrl/api/fish-profiles/suggest?fish_name=${Uri.encodeComponent(fishName)}');
     try {
       final res = await http.get(url);
       if (res.statusCode == 200) return jsonDecode(res.body);
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Error fetching fish suggestion: $e');
+    }
     return null;
   }
 
@@ -90,12 +156,15 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>?> getLatestTelemetry(String deviceSn) async {
+  // --- TELEMETRY & FORECASTING ---
+  static Future<dynamic> getLatestTelemetry(String deviceSn) async {
     final url = Uri.parse('$baseUrl/api/telemetry/latest?device_sn=$deviceSn');
     try {
       final res = await http.get(url);
       if (res.statusCode == 200) return jsonDecode(res.body);
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Error fetching latest telemetry: $e');
+    }
     return null;
   }
 
@@ -104,16 +173,20 @@ class ApiService {
     try {
       final res = await http.get(url);
       if (res.statusCode == 200) return jsonDecode(res.body);
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Error fetching telemetry history: $e');
+    }
     return [];
   }
 
-  static Future<Map<String, dynamic>?> getCurrentWeather() async {
+  static Future<dynamic> getCurrentWeather() async {
     final url = Uri.parse('https://api.open-meteo.com/v1/forecast?latitude=14.5264&longitude=121.1558&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&timezone=Asia%2FManila');
     try {
       final res = await http.get(url);
       if (res.statusCode == 200) return jsonDecode(res.body)['current'];
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Error fetching current weather: $e');
+    }
     return null;
   }
 
@@ -122,7 +195,9 @@ class ApiService {
     try {
       final res = await http.get(url);
       if (res.statusCode == 200) return jsonDecode(res.body)['forecast'];
-    } catch (e) {}
+    } catch (e) {
+      debugPrint('Error fetching forecast: $e');
+    }
     return [];
   }
 }

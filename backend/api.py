@@ -19,7 +19,7 @@ app.add_middleware(
 )
 
 # =========================================================
-# --- DATABASE INITIALIZATION (WITH NEW UPGRADE TABLES) ---
+# --- DATABASE INITIALIZATION (WITH CLEAN SEEDING)      ---
 # =========================================================
 def init_db():
     conn = sqlite3.connect('pearl_data.db')
@@ -51,6 +51,13 @@ def init_db():
         timestamp DATETIME
     )''')
 
+    cursor.execute('''CREATE TABLE IF NOT EXISTS fish_profiles (
+        id INTEGER PRIMARY KEY AUTOINCREMENT, fish_name TEXT UNIQUE,
+        temp_norm_min REAL, temp_norm_max REAL, temp_danger_min REAL, temp_danger_max REAL,
+        ph_norm_min REAL, ph_norm_max REAL, ph_danger_min REAL, ph_danger_max REAL,
+        turb_norm_max REAL, turb_danger_max REAL, suggestion_text TEXT
+    )''')
+    
     # NEW TABLE 2: ISO/IEC 25010 Performance Efficiency Telemetry Log
     cursor.execute('''CREATE TABLE IF NOT EXISTS performance_logs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -62,15 +69,14 @@ def init_db():
         timestamp DATETIME
     )''')
     
+    # Create ONLY the admin and your specific ESP32 device
     cursor.execute("SELECT COUNT(*) FROM users")
     if cursor.fetchone()[0] == 0:
         cursor.execute("INSERT INTO users (username, password, role) VALUES ('admin', 'admin123', 'admin')")
-        for i in range(1, 11):
-            cursor.execute("INSERT INTO users (username, password, role) VALUES (?, ?, 'farmer')", (f"farmer_{i}", f"pass{i}"))
-            cursor.execute(
-                "INSERT INTO devices (device_sn, owner_id, pond_name, location, length, width, depth, fish_count) VALUES (?, ?, ?, ?, 25.0, 20.0, 1.0, 500)", 
-                (f"PEARL-ESP32-{i:03d}", i + 1, f"Test Pond {i}", "Angono, Rizal")
-            )
+        cursor.execute(
+            "INSERT INTO devices (device_sn, owner_id, pond_name, location, length, width, depth, fish_count) VALUES (?, ?, ?, ?, 25.0, 20.0, 1.0, 500)", 
+            ("PEARL-ESP32S3-001", 1, "Main Production Pond", "Angono, Rizal")
+        )
     conn.commit()
     conn.close()
 
@@ -141,6 +147,32 @@ class DeviceSettings(BaseModel):
     sleep_interval: int
     ph_offset: float
     turb_offset: float
+    # --- ADDED FISH THRESHOLDS ---
+    fish_type: str = "Tilapia"
+    temp_norm_min: float = 26.0
+    temp_norm_max: float = 33.0
+    temp_danger_min: float = 24.0
+    temp_danger_max: float = 35.0
+    ph_norm_min: float = 7.0
+    ph_norm_max: float = 8.5
+    ph_danger_min: float = 6.5
+    ph_danger_max: float = 9.0
+    turb_norm_max: float = 80.0
+    turb_danger_max: float = 100.0
+
+class FishProfile(BaseModel):
+    fish_name: str
+    temp_norm_min: float
+    temp_norm_max: float
+    temp_danger_min: float
+    temp_danger_max: float
+    ph_norm_min: float
+    ph_norm_max: float
+    ph_danger_min: float
+    ph_danger_max: float
+    turb_norm_max: float
+    turb_danger_max: float
+    suggestion_text: str = ""
 
 class AccountData(BaseModel):
     username: str
@@ -248,15 +280,21 @@ async def receive_data(data: SensorData):
 async def get_devices(user_id: int = 1, role: str = "admin"):
     conn = sqlite3.connect('pearl_data.db')
     cursor = conn.cursor()
+    columns = "device_sn, owner_id, pond_name, location, length, width, depth, alert_phone, alert_level, sleep_interval, ph_offset, turb_offset, fish_count, fish_type, temp_norm_min, temp_norm_max, temp_danger_min, temp_danger_max, ph_norm_min, ph_norm_max, ph_danger_min, ph_danger_max, turb_norm_max, turb_danger_max"
+    
     if role.lower() == 'admin':
-        cursor.execute("SELECT device_sn, owner_id, pond_name, location, length, width, depth, alert_phone, alert_level, sleep_interval, ph_offset, turb_offset, fish_count FROM devices")
+        cursor.execute(f"SELECT {columns} FROM devices")
     else:
-        cursor.execute("SELECT device_sn, owner_id, pond_name, location, length, width, depth, alert_phone, alert_level, sleep_interval, ph_offset, turb_offset, fish_count FROM devices WHERE owner_id=?", (user_id,))
+        cursor.execute(f"SELECT {columns} FROM devices WHERE owner_id=?", (user_id,))
+        
     rows = [{
         "device_sn": r[0], "owner_id": r[1], "pond_name": r[2], "location": r[3],
         "length": r[4], "width": r[5], "depth": r[6], "alert_phone": r[7],
         "alert_level": r[8], "sleep_interval": r[9], "ph_offset": r[10],
-        "turb_offset": r[11], "fish_count": r[12]
+        "turb_offset": r[11], "fish_count": r[12], "fish_type": r[13],
+        "temp_norm_min": r[14], "temp_norm_max": r[15], "temp_danger_min": r[16], "temp_danger_max": r[17],
+        "ph_norm_min": r[18], "ph_norm_max": r[19], "ph_danger_min": r[20], "ph_danger_max": r[21],
+        "turb_norm_max": r[22], "turb_danger_max": r[23]
     } for r in cursor.fetchall()]
     conn.close()
     return rows
@@ -268,11 +306,15 @@ async def update_device(data: DeviceSettings):
     cursor.execute('''
         UPDATE devices 
         SET pond_name=?, location=?, length=?, width=?, depth=?, fish_count=?, 
-            alert_phone=?, alert_level=?, sleep_interval=?, ph_offset=?, turb_offset=?
+            alert_phone=?, alert_level=?, sleep_interval=?, ph_offset=?, turb_offset=?,
+            fish_type=?, temp_norm_min=?, temp_norm_max=?, temp_danger_min=?, temp_danger_max=?,
+            ph_norm_min=?, ph_norm_max=?, ph_danger_min=?, ph_danger_max=?, turb_norm_max=?, turb_danger_max=?
         WHERE device_sn=?
     ''', (data.pond_name, data.location, data.length, data.width, data.depth, data.fish_count,
-          data.alert_phone, data.alert_level, data.sleep_interval, 
-          data.ph_offset, data.turb_offset, data.device_sn))
+          data.alert_phone, data.alert_level, data.sleep_interval, data.ph_offset, data.turb_offset,
+          data.fish_type, data.temp_norm_min, data.temp_norm_max, data.temp_danger_min, data.temp_danger_max,
+          data.ph_norm_min, data.ph_norm_max, data.ph_danger_min, data.ph_danger_max, data.turb_norm_max, data.turb_danger_max, 
+          data.device_sn))
     conn.commit()
     conn.close()
     return {"status": "success"}
@@ -293,6 +335,44 @@ async def get_all_accounts():
         "pond_name": r[4], "location": r[5], "length": r[6], "width": r[7],
         "depth": r[8], "fish_count": r[9], "alert_phone": r[10]
     } for r in rows]
+
+
+# =========================================================
+# --- FISH SPECIES LIBRARY ENDPOINTS ---
+# =========================================================
+@app.get("/api/fish-profiles")
+async def get_fish_profiles():
+    conn = sqlite3.connect('pearl_data.db')
+    cursor = conn.cursor()
+    cursor.execute("SELECT fish_name, temp_norm_min, temp_norm_max, temp_danger_min, temp_danger_max, ph_norm_min, ph_norm_max, ph_danger_min, ph_danger_max, turb_norm_max, turb_danger_max, suggestion_text FROM fish_profiles")
+    rows = cursor.fetchall()
+    conn.close()
+    return [{
+        "fish_name": r[0], "temp_norm_min": r[1], "temp_norm_max": r[2], "temp_danger_min": r[3], "temp_danger_max": r[4],
+        "ph_norm_min": r[5], "ph_norm_max": r[6], "ph_danger_min": r[7], "ph_danger_max": r[8],
+        "turb_norm_max": r[9], "turb_danger_max": r[10], "suggestion_text": r[11]
+    } for r in rows]
+
+@app.post("/api/fish-profiles")
+async def save_fish_profile(data: FishProfile):
+    conn = sqlite3.connect('pearl_data.db')
+    cursor = conn.cursor()
+    cursor.execute('''
+        INSERT INTO fish_profiles (fish_name, temp_norm_min, temp_norm_max, temp_danger_min, temp_danger_max, ph_norm_min, ph_norm_max, ph_danger_min, ph_danger_max, turb_norm_max, turb_danger_max, suggestion_text)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(fish_name) DO UPDATE SET 
+            temp_norm_min=excluded.temp_norm_min, temp_norm_max=excluded.temp_norm_max,
+            temp_danger_min=excluded.temp_danger_min, temp_danger_max=excluded.temp_danger_max,
+            ph_norm_min=excluded.ph_norm_min, ph_norm_max=excluded.ph_norm_max,
+            ph_danger_min=excluded.ph_danger_min, ph_danger_max=excluded.ph_danger_max,
+            turb_norm_max=excluded.turb_norm_max, turb_danger_max=excluded.turb_danger_max,
+            suggestion_text=excluded.suggestion_text
+    ''', (data.fish_name, data.temp_norm_min, data.temp_norm_max, data.temp_danger_min, data.temp_danger_max,
+          data.ph_norm_min, data.ph_norm_max, data.ph_danger_min, data.ph_danger_max,
+          data.turb_norm_max, data.turb_danger_max, data.suggestion_text))
+    conn.commit()
+    conn.close()
+    return {"status": "success"}
 
 @app.post("/api/admin/accounts/create")
 async def create_account(data: AccountData):
